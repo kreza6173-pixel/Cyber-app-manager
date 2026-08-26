@@ -47,19 +47,6 @@ that feel like you're hacking the mainframe.
 
 ---
 
-## 📸 Screenshots
-
-<div align="center">
-
-| Dashboard | Package Registry | Batch Operations |
-|:---:|:---:|:---:|
-| <img src="docs/screenshots/01-dashboard.png" width="250"> | <img src="docs/screenshots/02-registry.png" width="250"> | <img src="docs/screenshots/03-batch.png" width="250"> |
-| *Live stats with animated counters* | *Color-coded tags & checkbox selection* | *Bottom action bar for bulk ops* |
-
-</div>
-
----
-
 ## 🏗️ Architecture
 
 ```
