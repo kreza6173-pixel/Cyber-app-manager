@@ -41,34 +41,9 @@ that feel like you're hacking the mainframe.
 
 ---
 
-## 🚀 What Makes This Different?
-
-Most app managers give you a boring list and a single toggle. **Cyber App Manager** gives you a **full neon HUD** — glassmorphism cards, real-time stat counters, scanline overlays, and batch operations that feel like you're hacking the mainframe.
-
-Built from the ground up for **Shevery ADB Modules**, this isn't just another debloater. It's a **system control interface** designed for power users who want full visibility and surgical precision over every package on their device.
+# package on their device.
 
 > *"Finally, an app manager that looks as powerful as it actually is."*
-
----
-
-## ✨ Features
-
-| Feature | Description |
-|---------|-------------|
-| 🧊 **One-Tap Freeze** | Disable any package instantly via `pm disable-user` — no root required |
-| 🔓 **One-Tap Unfreeze** | Re-enable disabled packages with a single tap |
-| 🗑️ **Uninstall** | Permanently remove user apps |
-| ⛔ **Force-Stop** | Kill running apps immediately |
-| 📦 **Batch Operations** | Select multiple packages and execute actions in bulk |
-| 🔍 **Live Search** | Real-time package filtering as you type |
-| 🏷️ **Smart Tags** | SYSTEM · ENABLED · FROZEN · PROTECTED — color-coded at a glance |
-| 🛡️ **Safety Guard** | 16+ critical packages auto-protected (SystemUI, Settings, GMS, launcher, IME) |
-| 📊 **Live Stats Dashboard** | Total · Enabled · Frozen · System — with animated fill bars |
-| 🖥️ **Built-in Console** | Every shell command logged with timestamps — full transparency |
-| 🎨 **Neon HUD UI** | Glassmorphism, cyan/magenta accents, scanlines, monospace typography |
-| 💾 **Snapshot Engine** | Save and restore package states across sessions |
-| 🔁 **Auto-Enforce** | `service.sh` re-freezes packages from `enforce.list` on every boot |
-| 🔒 **100% Offline** | Zero network calls, no telemetry, no remote fonts or CDNs |
 
 ---
 
