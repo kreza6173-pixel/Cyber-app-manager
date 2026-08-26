@@ -1,0 +1,6 @@
+state/
+logs/
+dist/
+*.zip
+.DS_Store
+*.swp

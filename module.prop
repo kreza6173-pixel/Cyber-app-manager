@@ -1,0 +1,8 @@
+id=cyber-app-manager
+name=Cyber App Manager
+version=v1.1.2
+versionCode=4
+author=kreza6173-pixel
+description=Cyberpunk-themed app manager for Shevery. Freeze, enable, uninstall, force-stop packages with batch ops.
+minApi=26
+usesShellBridge=true

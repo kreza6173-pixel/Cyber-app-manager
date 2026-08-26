@@ -1,0 +1,11 @@
+#!/system/bin/sh
+echo "╔══════════════════════════════════════╗"
+echo "║   ⚡ CYBER APP MANAGER v1.1.2 ⚡     ║"
+echo "╚══════════════════════════════════════╝"
+echo ""
+echo "Total: $(pm list packages 2>/dev/null | wc -l)"
+echo "System: $(pm list packages -s 2>/dev/null | wc -l)"
+echo "User: $(pm list packages -3 2>/dev/null | wc -l)"
+echo "Disabled: $(pm list packages -d 2>/dev/null | wc -l)"
+echo ""
+echo "Open WebUI for full control."
