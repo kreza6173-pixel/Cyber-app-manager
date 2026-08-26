@@ -4,7 +4,7 @@
 
 ### *The most powerful cyberpunk-themed app manager for Shevery ADB Modules*
 
-[![Shevery](https://img.shields.io/badge/Shevery-ADB%20Module-00d4ff?style=flat-square&logo=android)](https://github.com/HmnDev-Tech/shevery)
+[[Shevery](https://img.shields.io/badge/Shevery-ADB%20Module-00d4ff?style=flat-square&logo=android)](https://github.com/HmnDev-Tech/shevery)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android)](https://developer.android.com)
 [![License](https://img.shields.io/badge/License-MIT-ff3366?style=flat-square)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-v1.1.2-ff00aa?style=flat-square)]()
