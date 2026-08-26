@@ -1,19 +1,43 @@
 <div align="center">
 
-# ⚡ **CYBER APP MANAGER**
-
+# ⚡ CYBER APP MANAGER
 ### *The most powerful cyberpunk-themed app manager for Shevery ADB Modules*
 
-[[Shevery](https://img.shields.io/badge/Shevery-ADB%20Module-00d4ff?style=flat-square&logo=android)](https://github.com/HmnDev-Tech/shevery)
-[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android)](https://developer.android.com)
+[![Shevery](https://img.shields.io/badge/Shevery-ADB%20Module-00d4ff?style=flat-square&logo=android)](...)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android)](...)
 [![License](https://img.shields.io/badge/License-MIT-ff3366?style=flat-square)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-v1.1.2-ff00aa?style=flat-square)]()
-
-<img src="docs/screenshots/header.png" width="100%" alt="Cyber App Manager Banner">
 
 **🛡️ Freeze · 🔓 Unfreeze · 🗑️ Uninstall · ⛔ Force-Stop · 📊 Batch Operations**
 
 </div>
+
+## 🚀 What Makes This Different?
+
+Most app managers give you a boring list and a single toggle. 
+Cyber App Manager gives you a full neon HUD — glassmorphism cards, 
+real-time stat counters, scanline overlays, and batch operations 
+that feel like you're hacking the mainframe.
+
+> "Finally, an app manager that looks as powerful as it actually is."
+
+## ✨ Features
+🧊 One-Tap Freeze | 🔓 One-Tap Unfreeze | 🗑️ Uninstall | ⛔ Force-Stop
+📦 Batch Operations | 🔍 Live Search | 🏷️ Smart Tags | 🛡️ Safety Guard
+📊 Live Stats Dashboard | 🖥️ Built-in Console | 🎨 Neon HUD UI
+💾 Snapshot Engine | 🔁 Auto-Enforce | 🔒 100% Offline
+
+## ⚡ Installation
+1. Download cyber-app-manager-v1.1.2.zip from Releases
+2. Shevery → ADB Modules → Install from storage
+3. Enable module → Full Access → WebUI 🚀
+
+## 🛡️ Safety Architecture
+- Protected Packages auto-refused
+- Explicit Confirmation on system apps
+- Visible Console — every command logged
+- Zero Network — no telemetry
+
 
 ---
 
