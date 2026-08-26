@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⚡**CYBER APP MANAGER**
+# ⚡ **CYBER APP MANAGER**
 
 ### *The most powerful cyberpunk-themed app manager for Shevery ADB Modules*
 
