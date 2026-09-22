@@ -1,205 +1,120 @@
-<div align="center">
+# Cyber App Manager
 
-# ⚡ CYBER APP MANAGER
-### *The most powerful cyberpunk-themed app manager for Shevery ADB Modules*
+**A cyberpunk-themed Android package manager — built as a [Shevery](https://github.com/HmnDev-Tech/shevery) ADB module.**
 
-<img width="1080" height="2400" alt="Image" src="https://github.com/user-attachments/assets/dd6ddb8c-7b06-4c89-8aac-71d328f083e7" />
+![License: MIT](https://img.shields.io/badge/license-MIT-00d4ff)
+![Android 8+](https://img.shields.io/badge/Android-8%2B-00ff88)
+![Root optional](https://img.shields.io/badge/root-not%20required-ff00aa)
 
-[![Shevery](https://img.shields.io/badge/Shevery-ADB%20Module-00d4ff?style=flat-square&logo=android)](...)
-[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android)](...)
-[![License](https://img.shields.io/badge/License-MIT-ff3366?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.1.2-ff00aa?style=flat-square)]()
+Freeze, restore, remove and inspect any package — system or user — without root, using `pm` and `am` through Shizuku/ADB. Snapshots, undo, pinned auto re-freeze, debloat presets built from a community knowledge base, per-app details (permissions, background limits, standby bucket), a data-usage view, and an optional AI advisor that explains packages and proposes changes you approve one by one.
 
-**🛡️ Freeze · 🔓 Unfreeze · 🗑️ Uninstall · ⛔ Force-Stop · 📊 Batch Operations**
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/apps-registry.jpg" alt="Cyber App Manager package registry" width="100%"></td>
+    <td width="33%"><img src="docs/screenshots/debloat-tab.jpg" alt="Cyber App Manager debloat presets" width="100%"></td>
+    <td width="33%"><img src="docs/screenshots/vault-tab.jpg" alt="Cyber App Manager vault: snapshots and pins" width="100%"></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/usage-tab.jpg" alt="Cyber App Manager data usage" width="100%"></td>
+    <td width="33%"><img src="docs/screenshots/ai-advisor.jpg" alt="Cyber App Manager AI advisor provider setup" width="100%"></td>
+    <td width="33%"><img src="docs/screenshots/advisor-privacy.jpg" alt="Cyber App Manager AI advisor privacy controls" width="100%"></td>
+  </tr>
+</table>
 
-</div>
+## Features
 
-## 🚀 What Makes This Different?
+- 🧊 **Freeze / unfreeze / force-stop / remove / restore** any package for the current user, with a live registry (search, filters, risk tag, sort)
+- 📚 **Knowledge base** of common Android, Google, Xiaomi/HyperOS, Samsung and OEM packages — friendly names, categories and a safe/caution/core risk tag, plus heuristics for anything not in the table
+- 🧹 **Debloat presets** (Google extras, Facebook stubs, telemetry, Xiaomi extras, Samsung extras, AOSP leftovers, and a knowledge-base-wide "known-safe" list) — review before freezing, or freeze in one tap
+- 💾 **Snapshots & undo** — save the full package state, diff it against now, restore just the differences, export/import as JSON; every batch is auto-snapshotted and the last 10 batches can be undone from a toast or the Vault tab
+- 📌 **Pinned freeze** — pin a package so it is frozen again automatically whenever Shevery starts a session (`service.sh`) or after it gets re-enabled by an update
+- 🔎 **Per-app detail sheet** — version, installer, install/update dates, runtime permissions (grant/revoke), background-activity restriction, app standby bucket
+- 📊 **Data usage** — since boot, last 24 h, all recorded history or since the last full charge, split into mobile / Wi-Fi / VPN-tunnel traffic, aggregated on-device from `dumpsys netstats`
+- 🤖 **Optional AI advisor** — bring your own API key (OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Mistral, xAI, or any OpenAI-compatible/local endpoint); explains packages and proposes actions you approve one by one
+- 🛡️ **Guarded by design** — core Android/Google components, resource overlays and the current launcher, keyboard, dialer and SMS app are detected live and can never be frozen, stopped, removed or have permissions touched, even by the AI or an imported snapshot
+- 🖥️ **Shell bridge console** — every command sent to the device, with copy/clear
 
-Most app managers give you a boring list and a single toggle. 
-Cyber App Manager gives you a full neon HUD — glassmorphism cards, 
-real-time stat counters, scanline overlays, and batch operations 
-that feel like you're hacking the mainframe.
+## Requirements
 
-> "Finally, an app manager that looks as powerful as it actually is."
+- [Shevery](https://github.com/HmnDev-Tech/shevery) with Shizuku (ADB or root mode)
+- Android 8+ (uses `pm disable-user` / `pm enable`, standard since Android 8)
+- Root is not required for any feature of this module
 
-## ✨ Features
-🧊 One-Tap Freeze | 🔓 One-Tap Unfreeze | 🗑️ Uninstall | ⛔ Force-Stop
-📦 Batch Operations | 🔍 Live Search | 🏷️ Smart Tags | 🛡️ Safety Guard
-📊 Live Stats Dashboard | 🖥️ Built-in Console | 🎨 Neon HUD UI
-💾 Snapshot Engine | 🔁 Auto-Enforce | 🔒 100% Offline
+## Installation
 
-## ⚡ Installation
-1. Download cyber-app-manager-v1.1.2.zip from Releases
-2. Shevery → ADB Modules → Install from storage
-3. Enable module → Full Access → WebUI 🚀
+1. Download the latest release ZIP.
+2. In Shevery, open **ADB Modules → Install ZIP** and select the file.
+3. Set the module access mode to **Full access**, or enable **WebUI shell bridge** in Custom mode.
+4. Open the module's WebUI.
 
-## 🛡️ Safety Architecture
-- Protected Packages auto-refused
-- Explicit Confirmation on system apps
-- Visible Console — every command logged
-- Zero Network — no telemetry
+## Usage
 
+| Tab | Purpose |
+|---|---|
+| **Apps** | Search, filter and sort the full package registry; select packages and freeze, unfreeze, force-stop, remove, restore or pin them in a batch |
+| **Debloat** | Ready-made presets built from the knowledge base; review the selection before freezing |
+| **Vault** | Snapshots (save/diff/restore/export/import), pinned packages, recent undoable batches, and module settings |
+| **Usage** | Per-app data usage for a chosen range, split into mobile / Wi-Fi / VPN traffic |
+| **AI Advisor** | Chat with your provider of choice about your packages (optional) |
 
----
+Tapping the **i** button on any package opens its detail sheet: version, installer, permissions, background limits and standby bucket. The **AI** button asks the advisor about that specific package.
 
-# package on their device.
+The module also ships a quick action (`action.sh`, tap the module card → Action) that prints a status summary and re-applies pinned freezes without opening the WebUI.
 
-> *"Finally, an app manager that looks as powerful as it actually is."*
+## AI Advisor
 
----
+The advisor is disabled until you add your own API key in the **AI Advisor** tab. Nothing is sent to any provider before you send a message.
 
-## 🏗️ Architecture
+- **Providers** — OpenAI, Anthropic (Claude), Google Gemini, DeepSeek, Mistral, xAI, and a *Custom* option for any OpenAI-compatible base URL (Ollama, LM Studio, OpenRouter, your own proxy). **Fetch** lists the models available to your key.
+- **You control what is shared** — device status, frozen/removed packages, the current selection and the last diagnostic are shared by default; the full package list, running apps and data usage are opt-in. **Preview what will be sent** shows the exact context text.
+- **Proposals, not commands** — the advisor can suggest freezing, unfreezing, force-stopping, removing, restoring, pinning, restricting background activity, or saving a note about a package. Nothing runs until you tap **Apply**, and destructive actions still ask for confirmation (typed confirmation for removal).
+- **Local validation** — every proposal is re-checked before it can run: the package must exist and not be core, an overlay, or the current launcher/keyboard/dialer/SMS app. Notes are clearly labelled as unverified AI output in the detail sheet.
+- **Key storage** — keys are kept in this WebUI's local storage only. Untick *remember key* to keep a key for the current session, or use *Forget all keys* to remove them.
 
-```
-cyber-app-manager/
-├── 📄 module.prop          # Module manifest + usesShellBridge=true
-├── 📜 lib.sh               # Shared functions + protected package list
-├── 📜 appctl.sh            # Package operations (freeze/unfreeze/uninstall/force-stop)
-├── 📜 snapshot.sh          # Save / list / restore package states
-├── 📜 service.sh           # Auto-applies enforce.list on every boot/session
-├── 📜 action.sh            # Quick text summary (tap module card → Action)
-├── 🌐 webui/
-│   ├── index.html          # Neon HUD interface
-│   ├── style.css           # Cyberpunk glassmorphism theme
-│   └── script.js           # window.Shizuku bridge + batch ops engine
-├── 📖 README.md
-└── 📜 LICENSE
-```
+Requests are sent directly from the WebUI to the provider you choose. OpenAI, Anthropic and Gemini accept direct browser calls; for providers that do not, use the *Custom* option with a proxy.
 
-### 🔌 WebUI Shell Bridge
+> **Internet access:** Shevery blocks network access inside module WebUIs by default. To use the advisor, long-press the Cyber App Manager card in Shevery and tap **Trust**, then reopen the module.
 
-The WebUI communicates directly with the device via `window.Shizuku.exec()`, the official Shevery ADB Module API. Every command returns structured JSON:
+## Safety model
 
-```json
-{
-  "ok": true,
-  "exitCode": 0,
-  "stdout": "package:com.example.app\n...",
-  "stderr": "",
-  "timedOut": false
-}
-```
+| Layer | Reversibility | Gate |
+|---|---|---|
+| Freeze / unfreeze | Instant toggle, auto-snapshotted | confirmation (destructive-style for freeze) |
+| Force-stop | Instant | none |
+| Remove (system app) | Recoverable with Restore | confirmation |
+| Remove (user app) | Not reversible — data is lost | typed confirmation |
+| Permission grant/revoke, background restriction, standby bucket | Instant toggle from the detail sheet | guard check |
+| AI-proposed actions | Same as above | explicit **Apply** tap + local validation, on top of the manager's own confirmations |
 
-No external scripts needed for reading — `pm list packages` runs natively through the bridge.
+Core Android/Google components and resource overlays are refused by a static list; the current launcher, keyboard, default dialer and default SMS app are detected live on every scan and refused dynamically, so the check still holds after you change any of them.
 
----
-
-## ⚡ Installation
-
-### Method 1: Install from ZIP (Recommended)
-
-1. Download **`cyber-app-manager-v1.1.2.zip`** from [Releases](../../releases)
-2. Open **Shevery** → **ADB Modules** → **Install from storage**
-3. Select the ZIP file
-4. Enable the module and set access mode to **Full** *(or Custom + enable WebUI Shell Bridge)*
-5. Tap the module card → **WebUI** 🚀
-
-### Method 2: Install from Source
-
-```bash
-git clone https://github.com/kreza6173-pixel/cyber-app-manager.git
-cd cyber-app-manager
-# Copy the folder to /sdcard and install via Shevery → ADB Modules → Install from source
-```
-
----
-
-## 🛡️ Safety Architecture
-
-Cyber App Manager is designed to be **powerful but safe**:
-
-- ✅ **Protected Packages** — `android`, `com.android.systemui`, `com.android.settings`, `com.google.android.gms`, current launcher, and current IME are **automatically refused** from destructive operations
-- ✅ **Explicit Confirmation** — Every batch action on system packages shows a confirmation modal
-- ✅ **Visible Console** — Every shell command is logged in the built-in console drawer. Nothing happens off-screen.
-- ✅ **Dry-Run Fallback** — `appctl.sh` validates before executing; direct `pm` commands are only used as fallback
-- ✅ **Zero Network** — No internet permission, no telemetry, no remote assets
-
----
-
-## 🎮 Usage Guide
-
-### Basic Operations
-
-| Action | How To |
-|--------|--------|
-| 🔍 Search | Type in the filter box — results update live |
-| 🏷️ Filter | Tap ALL / USER / SYSTEM / FROZEN tabs |
-| ☑️ Select | Tap any package row or its checkbox |
-| 🧊 Freeze | Select packages → tap **FREEZE** |
-| 🔓 Unfreeze | Select frozen packages → tap **UNFREEZE** |
-| ⛔ Force-Stop | Select running packages → tap **FORCE-STOP** |
-| 🗑️ Uninstall | Select user packages → tap **UNINSTALL** |
-
-### Pro Tips
-
-- **Select Page** — Selects all visible packages in the current filter
-- **Clear** — Deselects everything
-- **Console** — Tap the bottom bar to expand the shell log and see every command executed
-- **Snapshots** — Use `snapshot.sh save` and `snapshot.sh restore` to manage package states across ROM flashes
-
----
-
-## ⚙️ Requirements
-
-| Requirement | Details |
-|-------------|---------|
-| 📱 Android | 8.0+ (API 26) |
-| 🔧 Shevery | Latest version with ADB Modules enabled |
-| 🔑 Privileges | Shizuku started (via ADB or Root) |
-| 🌉 Bridge | WebUI Shell Bridge enabled in module settings |
-
----
-
-## 🛠️ Building from Source
-
-No build step required — this is a **zero-dependency** module. Just ZIP the folder:
-
-```bash
-# Linux / macOS
-zip -r cyber-app-manager-v1.1.2.zip module.prop *.sh webui/ README.md LICENSE
-
-# Or simply install the folder directly via Shevery's "Install from source"
-```
-
----
-
-## 🤝 Contributing
-
-Found a bug? Got an idea? PRs are welcome!
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feat/amazing-feature`)
-3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
-4. Push to the branch (`git push origin feat/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📜 License
+## Repository layout
 
 ```
-MIT License
-
-Copyright (c) 2026 kreza6173-pixel
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+module.prop         Module metadata
+action.sh            Status summary + re-applies pinned freezes
+service.sh           Re-applies pinned freezes once per Shizuku session
+appctl.sh            Single-package control for scripting (freeze/unfreeze/force-stop/remove/restore/clear-data)
+snapshot.sh          Snapshot save/list/show/diff/restore/delete from the command line
+lib.sh               Shared shell helpers (guard, current_states, cam_op, enforce_pinned)
+webui/index.html     Interface
+webui/style.css      Theme
+webui/script.js      Core engine: bridge, registry, guard, ops, snapshots, pins, usage, detail sheet
+webui/kb.js          Package knowledge base and debloat presets
+webui/ai.js          Optional AI advisor
+docs/screenshots/    Images used in this README
 ```
 
----
+Snapshots, pins and logs are stored at `/data/local/tmp/cyber-app-manager` on the device, shared between the WebUI and the shell scripts.
 
-<div align="center">
+## Contributing
 
-### 💚 Built with passion for the Android power-user community
+Issues and pull requests are welcome, including additions to the package knowledge base. Please keep new destructive actions behind a confirmation, keep the guard checks in `lib.sh` and `webui/script.js` in sync, and never allow a core package, overlay, or the live launcher/keyboard/dialer/SMS app to be frozen, stopped or removed.
 
-**[⬇ Download Latest Release](../../releases)** · **[🐛 Report Bug](../../issues)** · **[⭐ Star This Repo](../../stargazers)**
+## Disclaimer
 
-</div>
+Freezing or removing the wrong package can break features of your phone, including ones this module cannot detect (a poorly documented OEM dependency, for instance). Risk tags come from a community knowledge base and heuristics, not a guarantee. Snapshots make this reversible for anything the module itself changed — use them.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
