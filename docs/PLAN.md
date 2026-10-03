@@ -18,8 +18,8 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 
 1. Permission parser for `dumpsys package`. **Done.**
 2. Read-only permission audit in app details. **Done, phone-verified on user and system apps.**
-3. Runtime permission section of user 0 parsed separately, with flags (`SYSTEM_FIXED`, `POLICY_FIXED`, `USER_SET` ...). **Done in this push, unit-tested.**
-4. Guarded runtime Grant/Revoke (`pm grant/revoke --user 0`) with confirmation and read-back. Refused for protected apps, install-time and fixed permissions. **Done in this push, needs phone test.**
+3. Runtime permission section of user 0 parsed separately, with flags (`SYSTEM_FIXED`, `POLICY_FIXED`, `USER_SET` ...). **Done, unit-tested.**
+4. Guarded runtime Grant/Revoke (`pm grant/revoke --user 0`) with confirmation and read-back. **Implemented and phone-tested on a real running app. Android may terminate that app process while enforcing the change; this is a platform side effect, not evidence that the read-back is wrong.**
 5. AppOps special-access audit (`appops get`) and guarded set/reset with honest unsupported results. **Next.**
 
 ## Then
