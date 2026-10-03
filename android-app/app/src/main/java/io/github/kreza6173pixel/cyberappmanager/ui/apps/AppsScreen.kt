@@ -117,7 +117,8 @@ fun AppsScreen(repository: InventoryRepository, connected: Boolean, modifier: Mo
     when (e.state) { AppState.FROZEN -> tags += stringResource(R.string.tag_frozen); AppState.SUSPENDED -> tags += stringResource(R.string.tag_suspended); AppState.REMOVED -> tags += stringResource(R.string.tag_removed); AppState.ENABLED -> Unit }
     e.protectedReason?.let { tags += stringResource(R.string.tag_protected_format, it) }
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (selecting) Checkbox(checked = checked, onCheckedChange = null, enabled = e.protectedReason == null)
+        // Protected packages can never join a batch, so they get an empty slot instead of a checkbox.
+        if (selecting) Box(Modifier.width(48.dp), contentAlignment = Alignment.Center) { if (e.protectedReason == null) Checkbox(checked = checked, onCheckedChange = null) }
         Column(Modifier.weight(1f)) {
             if (e.label != e.pkg) Text(e.label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             LtrMonoText(e.pkg)
