@@ -25,12 +25,13 @@ import io.github.kreza6173pixel.cyberappmanager.shizuku.ShizukuUidKind
 
 /**
  * Home screen: Shizuku client state, exactly one next action per state, and the feature
- * entry points once READY. M0 has only the console; the app registry arrives in M1.
+ * entry points once READY.
  */
 @Composable
 fun HomeScreen(
     runtime: ShizukuRuntime,
     modifier: Modifier = Modifier,
+    onOpenApps: () -> Unit = {},
     onOpenConsole: () -> Unit = {},
 ) {
     val state = runtime.state
@@ -47,6 +48,7 @@ fun HomeScreen(
         UidRow(runtime)
         // Every feature needs the Shizuku UserService, so they are only offered once READY.
         if (state == ShizukuState.READY) {
+            FeatureButton(R.string.home_open_apps, onOpenApps)
             FeatureButton(R.string.home_open_console, onOpenConsole)
         }
         RefreshButton(runtime)

@@ -29,7 +29,41 @@
     <string name="action_share">Share</string>
     <string name="copied">Copied</string>
 
+    <string name="home_open_apps">Apps</string>
     <string name="home_open_console">Open console</string>
+
+    <string name="apps_title">VOID // APPS · list</string>
+    <string name="apps_search">Search name or package</string>
+    <string name="apps_loading">Loading…</string>
+    <string name="apps_waiting">Waiting for the Shizuku user service…</string>
+    <string name="apps_error">Could not read the package list.</string>
+    <string name="apps_shown_format">%1$d of %2$d</string>
+    <string name="filter_all">All</string>
+    <string name="filter_user">User</string>
+    <string name="filter_system">System</string>
+    <string name="filter_frozen">Frozen</string>
+    <string name="filter_removed">Removed</string>
+    <string name="filter_protected">Protected</string>
+    <string name="tag_system">system</string>
+    <string name="tag_user">user</string>
+    <string name="tag_frozen">frozen</string>
+    <string name="tag_removed">removed for this user</string>
+    <string name="tag_protected_format">protected: %1$s</string>
+
+    <string name="detail_title">App details</string>
+    <string name="detail_state_enabled">Enabled</string>
+    <string name="detail_state_frozen">Frozen (disabled for this user)</string>
+    <string name="detail_state_removed">Removed for this user (restorable)</string>
+    <string name="detail_protected_format">Protected (%1$s). Actions on this app will be refused.</string>
+    <string name="detail_version">Version</string>
+    <string name="detail_sdk">min / target SDK</string>
+    <string name="detail_installer">Installer</string>
+    <string name="detail_first">First installed</string>
+    <string name="detail_last">Last updated</string>
+    <string name="detail_flags">User 0 flags</string>
+    <string name="detail_raw">Raw output</string>
+    <string name="detail_error">Could not read package details.</string>
+    <string name="value_none">—</string>
 
     <string name="console_title">VOID // CONSOLE</string>
     <string name="console_command_label">Shell command</string>
