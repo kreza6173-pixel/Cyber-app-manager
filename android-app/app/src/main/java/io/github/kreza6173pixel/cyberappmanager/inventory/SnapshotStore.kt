@@ -1,14 +1,18 @@
 package io.github.kreza6173pixel.cyberappmanager.inventory
 
+import android.content.ContentResolver
+import android.content.ContentValues
 import android.content.Context
+import android.provider.MediaStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-/** Durable storage for reversible package state only. No APKs or private app data are stored. */
+/** Durable storage in public Downloads/VOID APPS so uninstalling VOID does not erase recovery data. */
 class SnapshotStore(context: Context) {
-    private val file = File(context.filesDir, "snapshots.json")
-    private val tmp = File(context.filesDir, "snapshots.json.tmp")
+    private val appContext = context.applicationContext
+    private val resolver = appContext.contentResolver
+    private val legacyFile = File(appContext.filesDir, "snapshots.json")
 
     @Synchronized
     fun list(): List<Snapshot> = read().sortedByDescending { it.createdAtMs }
@@ -33,8 +37,8 @@ class SnapshotStore(context: Context) {
     }
 
     private fun read(): List<Snapshot> = runCatching {
-        if (!file.exists()) return emptyList()
-        val array = JSONArray(file.readText())
+        val text = readText(FILE_NAME) ?: legacyFile.takeIf { it.exists() }?.readText() ?: return emptyList()
+        val array = JSONArray(text)
         buildList(array.length()) {
             for (i in 0 until array.length()) add(snapshotFrom(array.getJSONObject(i)))
         }
@@ -42,27 +46,23 @@ class SnapshotStore(context: Context) {
 
     private fun write(snapshots: List<Snapshot>) {
         val array = JSONArray()
-        snapshots.forEach { array.put(snapshotTo(it)) }
-        tmp.writeText(array.toString())
-        if (!tmp.renameTo(file)) {
-            file.delete()
-            check(tmp.renameTo(file)) { "could not commit snapshot store" }
-        }
-    }
-
-    private fun snapshotTo(snapshot: Snapshot) = JSONObject().apply {
-        put("id", snapshot.id)
-        put("name", snapshot.name)
-        put("createdAtMs", snapshot.createdAtMs)
-        put("entries", JSONArray().apply {
-            snapshot.entries.forEach { entry ->
-                put(JSONObject().apply {
-                    put("pkg", entry.pkg)
-                    put("isSystem", entry.isSystem)
-                    put("state", entry.state.name)
+        snapshots.forEach { snapshot ->
+            array.put(JSONObject().apply {
+                put("id", snapshot.id)
+                put("name", snapshot.name)
+                put("createdAtMs", snapshot.createdAtMs)
+                put("entries", JSONArray().apply {
+                    snapshot.entries.forEach { entry ->
+                        put(JSONObject().apply {
+                            put("pkg", entry.pkg)
+                            put("isSystem", entry.isSystem)
+                            put("state", entry.state.name)
+                        })
+                    }
                 })
-            }
-        })
+            })
+        }
+        writeText(FILE_NAME, array.toString())
     }
 
     private fun snapshotFrom(json: JSONObject): Snapshot {
@@ -82,17 +82,54 @@ class SnapshotStore(context: Context) {
         )
     }
 
-    private companion object { const val MAX_SNAPSHOTS = 50 }
+    private fun readText(name: String): String? = runCatching {
+        find(name)?.let { resolver.openInputStream(it)?.bufferedReader()?.use { reader -> reader.readText() } }
+    }.getOrNull()
+
+    private fun writeText(name: String, text: String) {
+        runCatching {
+            val uri = find(name) ?: resolver.insert(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, DIRECTORY)
+                },
+            ) ?: error("could not create persistent storage")
+            resolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { it.write(text) }
+                ?: error("could not open persistent storage")
+        }.onFailure {
+            // Keep the feature usable on unusual vendor storage implementations. The public
+            // file remains the primary source and is what survives uninstall.
+            legacyFile.writeText(text)
+        }
+    }
+
+    private fun find(name: String) = resolver.query(
+        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+        arrayOf(MediaStore.MediaColumns._ID),
+        "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH}=?",
+        arrayOf(name, DIRECTORY),
+        null,
+    )?.use { cursor -> if (cursor.moveToFirst()) MediaStore.Downloads.getContentUri("external", cursor.getLong(0)) else null }
+
+    private companion object {
+        const val DIRECTORY = "Download/VOID APPS/"
+        const val FILE_NAME = "snapshots.json"
+        const val MAX_SNAPSHOTS = 50
+    }
 }
 
-/** Durable user pins. Pins contain package names only and are always revalidated by the guard. */
+/** Durable user pins in the same uninstall-safe public directory. */
 class PinStore(context: Context) {
-    private val file = File(context.filesDir, "pins.json")
+    private val appContext = context.applicationContext
+    private val resolver = appContext.contentResolver
+    private val legacyFile = File(appContext.filesDir, "pins.json")
 
     @Synchronized
     fun list(): Set<String> = runCatching {
-        if (!file.exists()) return emptySet()
-        val array = JSONArray(file.readText())
+        val text = readText() ?: legacyFile.takeIf { it.exists() }?.readText() ?: return emptySet()
+        val array = JSONArray(text)
         buildSet {
             for (i in 0 until array.length()) {
                 val pkg = array.optString(i)
@@ -107,12 +144,39 @@ class PinStore(context: Context) {
         val next = list().toMutableSet().apply { if (pinned) add(pkg) else remove(pkg) }
         val array = JSONArray()
         next.sorted().forEach(array::put)
-        val tmp = File(file.parentFile, "pins.json.tmp")
-        tmp.writeText(array.toString())
-        if (!tmp.renameTo(file)) {
-            file.delete()
-            check(tmp.renameTo(file)) { "could not commit pin store" }
-        }
+        writeText(array.toString())
         return next
+    }
+
+    private fun readText(): String? = runCatching {
+        find()?.let { resolver.openInputStream(it)?.bufferedReader()?.use { reader -> reader.readText() } }
+    }.getOrNull()
+
+    private fun writeText(text: String) {
+        runCatching {
+            val uri = find() ?: resolver.insert(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, FILE_NAME)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, DIRECTORY)
+                },
+            ) ?: error("could not create persistent storage")
+            resolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { it.write(text) }
+                ?: error("could not open persistent storage")
+        }.onFailure { legacyFile.writeText(text) }
+    }
+
+    private fun find() = resolver.query(
+        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+        arrayOf(MediaStore.MediaColumns._ID),
+        "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH}=?",
+        arrayOf(FILE_NAME, DIRECTORY),
+        null,
+    )?.use { cursor -> if (cursor.moveToFirst()) MediaStore.Downloads.getContentUri("external", cursor.getLong(0)) else null }
+
+    private companion object {
+        const val DIRECTORY = "Download/VOID APPS/"
+        const val FILE_NAME = "pins.json"
     }
 }
