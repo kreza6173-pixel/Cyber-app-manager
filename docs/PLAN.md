@@ -16,19 +16,20 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 
 ## In progress: A4 permissions and AppOps
 
-1. Parse the permission sections from `dumpsys package` without inventing state on unknown ROM output. **Done in this push, unit-tested.**
-2. Add a read-only permission audit to app details, with requested/granted/unknown states.
-3. Add guarded runtime grant/revoke with read-back where Shizuku and Android permit it.
-4. Add AppOps special-access audit and honest unsupported results per ROM/API.
+1. Permission parser for `dumpsys package`. **Done.**
+2. Read-only permission audit in app details. **Done, phone-verified on user and system apps.**
+3. Runtime permission section of user 0 parsed separately, with flags (`SYSTEM_FIXED`, `POLICY_FIXED`, `USER_SET` ...). **Done in this push, unit-tested.**
+4. Guarded runtime Grant/Revoke (`pm grant/revoke --user 0`) with confirmation and read-back. Refused for protected apps, install-time and fixed permissions. **Done in this push, needs phone test.**
+5. AppOps special-access audit (`appops get`) and guarded set/reset with honest unsupported results. **Next.**
 
 ## Then
 
 - A5 boot receivers, component control, background AppOps.
 - A6 notification listener, DND access, per-app notification mute.
 - A7 Chain3 per-app network block, netpolicy background data.
-- A8 session install for APK, APKS and XAPK, OBB placement, extraction, cache trimming, safe shared-storage cleanup.
+- A8 session install for APK, APKS and XAPK, OBB placement, extraction, cache trimming, safe shared-storage cleanup. APKM is out of scope.
 - 1.0: README rewrite, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
 
 ## Gates
 
-No INTERNET permission. No protected bypass. No destructive batch without preview and snapshot. No support claim without a device probe. No release claim while CI or device acceptance is red.
+No INTERNET permission. No protected bypass. No destructive batch without preview and snapshot. No support claim without a device probe. No release claim while CI or device acceptance is red. Code and its strings/resources always land in the same commit.
