@@ -30,6 +30,7 @@ fun DebloatScreen(repository: InventoryRepository, connected: Boolean, modifier:
     var picked by remember { mutableStateOf(emptySet<String>()) }
     var action by remember { mutableStateOf(AppAction.SUSPEND) }
     var confirm by remember { mutableStateOf(false) }
+    var showDisclaimer by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf<BatchReport?>(null) }
     val entries = (inventory as? InventoryResult.Ok)?.entries?.associateBy { it.pkg } ?: emptyMap()
@@ -37,6 +38,15 @@ fun DebloatScreen(repository: InventoryRepository, connected: Boolean, modifier:
     fun eligibleNow(pkg: String, a: AppAction): Boolean {
         val entry = entries[pkg] ?: return false
         return eligibleForBatch(entry, a) && KnowledgeBase.classify(pkg, entry.isSystem).risk == Risk.SAFE
+    }
+
+    if (showDisclaimer) {
+        AlertDialog(
+            onDismissRequest = { showDisclaimer = false },
+            title = { Text(stringResource(R.string.debloat_disclaimer_title)) },
+            text = { Text(stringResource(R.string.debloat_disclaimer)) },
+            confirmButton = { TextButton(onClick = { showDisclaimer = false }) { Text(stringResource(R.string.action_close)) } },
+        )
     }
 
     val current = preset
@@ -74,13 +84,8 @@ fun DebloatScreen(repository: InventoryRepository, connected: Boolean, modifier:
         )
     }
 
-    Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(stringResource(R.string.debloat_disclaimer_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
-                Text(stringResource(R.string.debloat_disclaimer), style = MaterialTheme.typography.bodySmall)
-            }
-        }
+    Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        CompactDisclaimer(onClick = { showDisclaimer = true })
         when {
             inventory !is InventoryResult.Ok -> Text(stringResource(if (connected) R.string.apps_loading else R.string.apps_waiting))
             current == null -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -132,6 +137,17 @@ fun DebloatScreen(repository: InventoryRepository, connected: Boolean, modifier:
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CompactDisclaimer(onClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(stringResource(R.string.debloat_disclaimer_title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error)
+            Text(stringResource(R.string.debloat_disclaimer_short), style = MaterialTheme.typography.bodySmall, maxLines = 2)
+            Text(stringResource(R.string.debloat_disclaimer_read_more), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
