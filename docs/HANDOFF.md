@@ -26,9 +26,10 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 | M0 core | done | READY, uid 2000 |
 | A1 inventory + guard + details | done | 835 total, 468 user, 367 system, 35 protected; counts match `pm` |
 | A2 single-package operations | done | Suspend/Unsuspend user and system apps; protected apps show no actions |
-| A3 snapshots, undo, pins, batch | **done** | see section 4 |
-| Debloat track | next | |
-| A4 to A8 | open | |
+| A3 snapshots, undo, pins, batch | done | see section 4 |
+| Debloat track | **done** | CI green and owner phone acceptance, including search and cross-manager restore |
+| A4 permissions + AppOps | **in progress** | permission parser and unit tests added; UI and writes remain |
+| A5 to A8 | open | |
 | 1.0 release | open | |
 
 ## 4. A3 acceptance (owner-confirmed on the phone)
@@ -36,43 +37,41 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 - Snapshot list, detail (scroll and select/copy), delete, refresh.
 - Restore/Undo: safety snapshot `Before undo`, one package at a time, per-package read-back report.
 - JSON Import/Export through the system file picker; merge by id; one canonical `snapshots.json`.
-- Real state after reinstall: actions rebuild from `dumpsys` read-back.
+- Real state after reinstall: details now update repository state before actions rebuild.
 - Pins: Pin/Unpin in app details for user and system non-protected apps, Pinned packages screen, one canonical `pins.json` updated on every change.
-- Batch acceptance test from PLAN: two user apps and one system app (`com.thirtytwo.steps`, `com.foxdebug.acode`, `com.android.egg`) suspended in one batch: `3 applied · 0 not applied`, exactly one `Before batch suspend` snapshot, Restore planned 3 changes and reported `3 applied · 0 not applied` with `unsuspend · applied` for each.
-- Protected packages cannot be selected for a batch (no checkbox shown since the follow-up fix).
+- Batch acceptance: two user apps and one system app suspended in one batch, one snapshot, sequential read-back, then restored successfully.
+- Protected packages cannot be selected for a batch.
+- Debloat: SAFE-only knowledge-base presets, compact disclaimer tested on Xiaomi Redmi Note 14 Global ROM, preset/package search, Suspend and Remove-for-user, snapshots, read-back reports, and Restore for packages previously removed by another manager.
 
-## 5. Problems found and fixes
+## 5. A4 foundation in this push
+
+- Added `PermissionAudit` and a defensive parser for requested/install permission sections from `dumpsys package`.
+- Unknown ROM sections are ignored rather than treated as granted or denied.
+- Unit tests cover granted/denied parsing, unknown sections, and empty output.
+- Next A4 push will expose this audit in app details, then add guarded grant/revoke and AppOps auditing.
+
+## 6. Problems found and fixes
 
 - Stale A2 test and a later clarified rule that system apps keep Suspend: tests aligned with the requested contract.
 - Wrong `SelectionContainer` import: fixed to `androidx.compose.foundation.text.selection.SelectionContainer`.
 - Invalid `emptyList().let` in InventoryRepository: replaced with explicit typed construction.
-- MediaStore duplicate files (`snapshots (1).json`, `pins (1).json` ...): the cursor loop skipped the first row, so the existing file was never found. Fixed with `moveToFirst` + do/while; reads merge every matching file and write one canonical file.
+- MediaStore duplicate files: fixed with `moveToFirst` + do/while; reads merge every matching file and writes one canonical file.
 - Stale cached state after reinstall: details now update repository state before actions rebuild.
-- App-private storage is wiped on uninstall, and a reinstall may not see files owned by the old install: public storage plus explicit Import/Export is the recovery path.
-- Repeated identical snapshots from rapid callbacks: deduplicated by name, state and a short window.
-- Batch selection showed an empty, unusable checkbox next to protected apps: replaced by an empty slot.
-- Some OEM system packages cannot be removed under Shizuku shell on the reference ROM: reported as failed/unsupported. Root and Dhizuku are out of scope by owner decision.
+- App-private storage is wiped on uninstall, so public storage plus explicit Import/Export is the recovery path.
+- Repeated identical snapshots: deduplicated by name, state and a short window.
+- Protected package batch checkbox: replaced by an empty slot.
+- Some OEM system packages cannot be removed under Shizuku shell on the reference ROM: reported as failed/unsupported. Root and Dhizuku remain out of scope.
 
-## 6. Remaining work, in order
+## 7. Remaining work, in order
 
-1. Debloat: port the legacy knowledge base and presets, risk tags, review screen with exact targets and proposed operation, guard on every entry including imported presets, one snapshot per batch, sequential read-back, honest unsupported results. Probe OEM examples (calculator, compass, notes) on the phone first.
-2. A4 runtime permissions and AppOps special access.
-3. A5 boot receivers, component control, background AppOps.
-4. A6 notification listener, DND access, per-app notification mute.
-5. A7 Chain3 per-app network block and netpolicy background data.
-6. A8 APK/APKS/XAPK/APKM session install, OBB placement, extraction, cache trimming, safe shared-storage cleanup.
-7. 1.0: rewrite README (still describes the legacy WebUI), About, icon, fastlane, release notes, signed release from CI secrets, final smoke test, merge to `main`.
+1. Finish A4: details permission audit, guarded runtime grant/revoke, AppOps special-access audit and honest unsupported results.
+2. A5 boot receivers, component control, background AppOps.
+3. A6 notification listener, DND access, per-app notification mute.
+4. A7 Chain3 per-app network block and netpolicy background data.
+5. A8 APK/APKS/XAPK/APKM session install, OBB placement, extraction, cache trimming, safe shared-storage cleanup.
+6. 1.0: rewrite README (still describes the legacy WebUI), About, icon, fastlane, release notes, signed release from CI secrets, final smoke test, merge to `main`.
 
-## 7. Commit trail (native branch, this phase)
+## 8. Commit trail
 
-- `3ad1a13`, `e8e7822`, `578008e`, `37f3f5c`: action policy, auto-snapshot foundation, system-app Suspend.
-- `7300550`, `dce8be2`, `9f870bb`: Snapshot UI, delete API, navigation.
-- `d2f17e0`, `38935ff`, `33d27e2`: detail line breaks, scroll/select, import fix.
-- `38a08fc`, `abbb8a1`: uninstall-safe storage, consolidation.
-- `daf3f40`, `161a8a8`, `caafe42`: typed inventory result, real state refresh, Snapshot refresh.
-- `d891669`: duplicate snapshot dedupe.
-- `5c30e81`: Restore/Undo with per-package read-back.
-- `8e07cd3`: JSON Import/Export.
-- `71c4563`, `17c1528`, `dbd8ccb`: Pins in details, Pinned packages screen, canonical `pins.json`.
-- `8a3927f`: batch Suspend/Unsuspend/Force stop with one snapshot and per-package results.
-- this commit: no checkbox on protected rows; A3 closed in docs.
+- `3ad1a13` through `a9d19f0`: native foundation, A1-A3, Debloat, cross-manager restore, and Debloat UI fixes.
+- current push: A4 permission parser and unit tests; roadmap updated.
