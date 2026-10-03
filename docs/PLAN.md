@@ -1,53 +1,90 @@
-# VOID // APPS: plan
+# VOID // APPS: roadmap and remaining work
 
-Updated 2026-10-03. One native app (Kotlin + Compose + Shizuku UserService) that replaces
-seven Shevery WebUI modules. Built on a copy of the PULSE // BATTERY M0-M2 core, which is
-already phone-proven. Read `docs/HANDOFF.md` for the rules.
+Updated: 2026-10-03. The project is a native Kotlin + Compose + Shizuku UserService app. The original idea and all completed work are recorded in `docs/HANDOFF.md`.
 
-Application id `io.github.kreza6173pixel.voidapps`. Working branch `native-app-v0` until 1.0,
-then merged into `main` (same flow as PULSE // BATTERY).
+## Product goal
 
-## 1. What comes from where
+Provide a safe, reversible, local package manager for Android that can inspect and manage user and system packages without root when Shizuku is sufficient, while accurately reporting when Dhizuku or root is required. The app must never pretend an operation succeeded.
 
-| Old repo | Taken into VOID // APPS | Dropped, and why |
-|---|---|---|
-| Cyber-app-manager (this repo) | package registry, freeze/unfreeze, force-stop, remove for user + restore, clear data, snapshots/undo/pins, debloat presets, knowledge base, per-app details | AI advisor (needs INTERNET), netstats usage (format differs per ROM; maybe later) |
-| void-autostart | boot receiver scan + component disable, RUN_IN_BACKGROUND / RUN_ANY_IN_BACKGROUND | nothing |
-| privacy-audit | runtime permission audit + revoke/grant, special access read from AppOps (not from dumpsys) | substring standby parsing |
-| void-pulse | notification listener access, DND access, per-app notification mute | EQ (never processed audio), mixer, light show, AI |
-| pulse-install | session install `pm install-create/-write/-commit` for APK/APKS/XAPK/APKM, OBB placement, APK extract | VirusTotal + AI (INTERNET), boot auto-install |
-| void-purge | `pm trim-caches`, empty-folder / log / duplicate scans in shared storage (only if the probe shows shell can read them), force-stop of user apps done correctly | root corpse finder, root cache wipe, ANR/tombstone wipe (root, untestable) |
-| VOID-WALL | per-app network block via Chain3, background data via netpolicy | iptables/ip6tables/tc (root), DNS filter (never filtered), "dark web" monitor, airplane panic |
+## Completed baseline
 
-## 2. Non-negotiable product rules
+- M0 core, Shizuku state machine, UserService/AIDL, ExecBridge, console, CI, and debug build.
+- A1 inventory, protected guard, parser coverage, package details, and real-device counts.
+- A2 Suspend/Unsuspend, Disable/Enable, Force stop, Remove/Restore, Clear data verdicts, and read-back.
+- A3 Snapshot model, durable JSON storage, Snapshot UI, delete/detail/refresh, scroll/select, Restore/Undo, per-package read-back, safety snapshots, and JSON import/export.
 
-1. No INTERNET permission. No analytics, no AI, no network lookups.
-2. One protected-package guard for the whole app: static core list + dynamic launcher,
-   keyboard, dialer, SMS, WebView provider, Shizuku manager and this app. No action
-   anywhere bypasses it.
-3. Every write is read back. "Applied" only if the read-back matches; otherwise show the
-   real state and the raw output.
-4. Every destructive batch takes a snapshot first and is undoable where Android allows.
-5. Bulk operations run one package at a time with a per-package result, never as a
-   fire-and-forget background loop, and never touch Shizuku or this app (that is why the
-   void-purge kill button never worked: it force-stopped the bridge).
-6. Nothing changes device state just because a screen was opened (VOID-WALL enabled
-   Chain3 on launch; never again).
-7. Root-only features are not built until a rooted tester exists.
+## Milestones
 
-## 3. Milestones (each: probe on the phone, then code, then phone test)
+### A3: finish the recovery layer
 
-| # | Milestone | Acceptance test on the phone |
-|---|---|---|
-| M0 | Core copied from PULSE, renamed, CI active | READY with uid 2000; console `id` gives `uid=2000(shell)` |
-| A1 | Package inventory + guard + app details | full list with user/system/disabled/removed counts matching `pm list packages` flags; launcher, keyboard, dialer, SMS shown as protected |
-| A2 | Freeze/unfreeze, force-stop, remove for user, restore, clear data | each action read back; a protected app refuses with a reason |
-| A3 | Snapshots, undo, pins, debloat presets | freeze 3 apps in one batch, undo restores all 3 |
-| A4 | Permissions + special access (Privacy) | revoke CAMERA from one app, read back, grant back |
-| A5 | Background: boot receivers + background AppOps (Autostart) | disable one receiver and one AppOp, both read back, revert |
-| A6 | Notifications: listener/DND access, per-app mute | list matches Android Settings; mute one app, read back |
-| A7 | Network: Chain3 per-app block, background data | block one app, its traffic stops, unblock restores; "unblock all" works |
-| A8 | Install + extract + cleaner | install an .apks from Download; trim caches; one shared-storage scan |
-| 1.0 | icon, About, fastlane, signed release | signed APK installed and smoke-tested |
+Status: mostly complete. Remaining:
 
-After 1.0 the seven old module repos get a README pointer to VOID // APPS and are archived.
+- Pins UI: pin/unpin in app details and list, display pinned state, safe re-apply only for valid non-protected packages.
+- Batch operation UI: select packages, preview exact targets, snapshot before execution, process sequentially, show per-package results.
+- Add pure tests for storage round-trip, malformed JSON, duplicate merge, ordering/cap, import/export, and restore result mapping.
+
+Acceptance: select three non-protected apps, execute a batch state change, see one pre-batch snapshot and three individual results, then restore them through Undo.
+
+### A4: permissions and special access
+
+- Runtime permission inventory per app.
+- Grant/revoke through the supported Package Manager path.
+- AppOps list/read/write for special access, with capability checks.
+- Read back every change and distinguish unsupported from failed.
+
+### A5: background and autostart
+
+- Boot receiver/component inventory and guarded enable/disable.
+- RUN_IN_BACKGROUND and RUN_ANY_IN_BACKGROUND AppOps.
+- Probe Xiaomi/HyperOS behaviour before claiming support.
+
+### A6: notifications
+
+- Notification listener access inventory.
+- DND access inventory.
+- Per-app notification mute where the ROM supports it.
+- Exact read-back and settings parity.
+
+### A7: network controls
+
+- Chain3 per-app network blocking.
+- Background-data controls through netpolicy.
+- No fake DNS filtering, iptables shortcut, or untested root path.
+- Prove block and unblock on the reference device.
+
+### A8: install and cleanup
+
+- Session install for APK/APKS/XAPK/APKM.
+- OBB placement and extraction.
+- Cache trimming and carefully scoped shared-storage scans.
+- Report shell limitations rather than claiming root-only cleanup.
+
+### Debloat track
+
+Debloat is a product track built on top of A3, not a blind delete button:
+
+1. Port the legacy knowledge base and presets.
+2. Add safe/caution/core risk classification and OEM/package metadata.
+3. Add a review screen with exact package list, current state, capability, and proposed operation.
+4. Refuse protected packages everywhere, including imported presets.
+5. Snapshot before a batch and provide per-package read-back.
+6. Report `unsupported` when the ROM requires Dhizuku or root for removal.
+7. Test calculator, compass, notes, and other OEM examples on Xiaomi/HyperOS before marking them supported.
+
+### 1.0 release
+
+- Rewrite README for native VOID reality and remove legacy claims.
+- About screen, final icon/branding, fastlane metadata, and release notes.
+- Ensure `.github/workflows/ci.yml` is the active workflow.
+- Build and verify signed release APK using CI secrets only.
+- Install and smoke-test on the Redmi/Xiaomi reference phone with Shizuku uid 2000.
+- Update HANDOFF and PLAN with verified results.
+- Merge `native-app-v0` into `main` only after CI and device acceptance are green.
+
+## Engineering gates
+
+- No INTERNET permission.
+- No destructive batch without preview and snapshot.
+- No claim of support without a real-device probe.
+- No protected-package bypass.
+- No release claim while CI or device acceptance is red.
