@@ -17,7 +17,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boolean, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope(); var entry by remember(pkg) { mutableStateOf(repository.entryFor(pkg)) }; var details by remember(pkg) { mutableStateOf<DetailsResult?>(null) }; var busy by remember(pkg) { mutableStateOf(false) }; var last by remember(pkg) { mutableStateOf<ActionResult?>(null) }; var confirm by remember(pkg) { mutableStateOf<AppAction?>(null) }; var reload by remember(pkg) { mutableStateOf(0) }
-    LaunchedEffect(pkg, connected, reload) { if (connected) { entry = repository.entryFor(pkg); details = repository.details(pkg) } }
+    LaunchedEffect(pkg, connected, reload) {
+        if (connected) {
+            details = repository.details(pkg)
+            entry = repository.entryFor(pkg)
+        }
+    }
     val pending = confirm
     if (pending != null) AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(actionLabel(pending))) }, text = { Text(stringResource(actionWarning(pending), entry?.label ?: pkg)) }, confirmButton = { TextButton({ confirm = null; busy = true; scope.launch { last = repository.perform(pkg, pending); entry = repository.entryFor(pkg); busy = false; reload++ } }) { Text(stringResource(R.string.action_confirm)) } }, dismissButton = { TextButton({ confirm = null }) { Text(stringResource(R.string.action_cancel)) } })
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
