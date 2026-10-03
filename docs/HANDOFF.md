@@ -17,7 +17,7 @@ The old WebUI and shell modules are historical references only. Root and Dhizuku
 
 ## 2. Engineering rules
 
-No INTERNET permission. Commands only through Shizuku UserService and ExecBridge. Package and permission names validated and quoted. Every write read back; APPLIED only when read-back matches. Protected packages refused in the repository, not only hidden in the UI. Snapshots hold package state only. Bulk work is sequential with per-package results. Code and the strings/resources it uses land in one commit. CI proves build and tests; the reference phone proves behaviour.
+No INTERNET permission. Commands only through Shizuku UserService and ExecBridge. Package and permission names validated and quoted. Every write read back; APPLIED only when read-back matches. Protected packages refused in the repository, not only hidden in the UI. Snapshots hold package state only. Bulk work is sequential with per-package results. Code and the strings/resources it uses land in one commit. CI proves build and tests; the reference phone proves behaviour. Diagnose CI failures from the actual failing test name and line in the log, never from assumption.
 
 ## 3. Status
 
@@ -28,7 +28,7 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 | A2 single-package operations | done | Suspend/Unsuspend user and system apps; protected apps show no actions |
 | A3 snapshots, undo, pins, batch | done | phone-verified |
 | Debloat track | done | CI green and owner phone acceptance, including search and cross-manager restore |
-| A4 permissions + AppOps | **in progress** | Permission audit and Grant/Revoke phone-verified. AppOps parser/model implemented and unit-tested; last CI failed only in the prefixed-output parser edge case. AppOps UI and writes remain |
+| A4 permissions + AppOps | **in progress** | Permission audit and Grant/Revoke phone-verified. AppOps parser/model implemented and unit-tested; CI #53 to #55 red on parser edge cases, root cause fixed in the latest push (see section 7). AppOps UI and writes remain |
 | A5 to A8 | open | |
 | 1.0 release | open | |
 
@@ -47,7 +47,7 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 
 ## 5. Current checkpoint and remaining path
 
-The latest successful phone checkpoint is permission audit plus runtime Grant/Revoke. The latest CI failure is isolated to `AppOpsTest > parsesCommonAppOpsOutput`, caused by a prefixed line such as `Uid mode: COARSE_LOCATION: foreground`; the parser fix is in the latest commit and must be confirmed green before continuing.
+The latest successful phone checkpoint is permission audit plus runtime Grant/Revoke. CI #53 to #55 were red in `AppOpsTest`; the real root cause and fix are recorded in section 7. The latest push must be confirmed green before continuing.
 
 After CI is green:
 
@@ -71,13 +71,17 @@ After CI is green:
 - CI run #46 red: A4 UI and strings were split across commits; #47 fixed it. Code/resources now land together.
 - First A4 audit grep dropped the runtime header; replaced by section-aware parsing.
 - Runtime audit initially showed stale state; fixed with full dumpsys plus authoritative `pm check-permission` read-back.
-- AppOps parser first handled only unprefixed lines; latest failure exposed prefixed Android output and was fixed by parsing the final operation/mode pair.
+- AppOps parser, CI #53 to #55 (verified from the CI logs):
+  - #53 failed `parsesCommonAppOpsOutput` (AppOpsTest.kt:16): the regex was anchored with `matchEntire`, so `Uid mode: COARSE_LOCATION: foreground` (space inside the prefix) never matched.
+  - #54 removed the start anchor. That fixed test 1 but broke `ignoresUnsupportedModesAndInvalidNames` (AppOpsTest.kt:27): `bad-name: deny` matched mid-line as op `name`, giving 2 operations instead of 1.
+  - #55 switched to `findAll().lastOrNull()`, which produces identical results on these inputs, so it stayed red on line 27. The earlier note blaming the prefixed-line case for #55 was wrong.
+  - Fix: keep the start anchored and allow only an optional word prefix: `^(?:[A-Za-z ]+:\s*)?op:\s*mode(;detail)?$`. Both tests satisfied by the same pattern.
 - Android may stop the target process during permission changes; UI warns before Grant/Revoke.
 - Some OEM system packages cannot be removed under Shizuku shell; reported unsupported. Root/Dhizuku remain out of scope.
 
 ## 8. Remaining work, in order
 
-1. Confirm latest AppOps parser fix green.
+1. Confirm the anchored AppOps parser fix is green.
 2. AppOps audit UI, guarded set/reset, read-back, and Drive phone test.
 3. A5 boot receivers, component control, background AppOps.
 4. A6 notification listener, DND access, per-app notification mute.
@@ -91,5 +95,6 @@ After CI is green:
 - `c86a46c`, `4a128f8`: A4 foundation and APKM scope decision.
 - `2d66045`, `1196863`: read-only permission audit in details.
 - `1ea2245`: runtime parsing and Grant/Revoke.
-- `ec27559`, `49a285e`, `822fac8`: authoritative runtime read-back and AppOps parser foundation.
-- current push: prefixed AppOps parser fix and checkpoint documentation.
+- `ec27559`, `49a285e`: authoritative runtime read-back.
+- `a85692c`, `822fac8`, `cb24d9e`: AppOps parser foundation and two unsuccessful parser fixes (CI #53 to #55 red).
+- current push: anchored AppOps parser with optional word prefix; corrected CI diagnosis.

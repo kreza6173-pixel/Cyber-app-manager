@@ -12,14 +12,21 @@ data class AppOpRecord(
 
 data class AppOpsAudit(val packageName: String, val operations: List<AppOpRecord>)
 
-/* Android emits both `camera: allow` and prefixed lines such as `Uid mode: COARSE_LOCATION: foreground`. */
-private val APP_OP_PAIR = Regex("([a-z][a-z0-9_]*):\\s*([a-z]+)(?:;\\s*(.*))?$", RegexOption.IGNORE_CASE)
+/*
+ * Android emits both `camera: allow` and prefixed lines such as `Uid mode: COARSE_LOCATION: foreground`.
+ * The line start stays anchored so fragments like `name: deny` inside `bad-name: deny` are never parsed;
+ * only an optional word prefix (letters and spaces, then a colon) is allowed before the operation.
+ */
+private val APP_OP_LINE = Regex(
+    "^(?:[A-Za-z ]+:\\s*)?([a-z][a-z0-9_]*):\\s*([a-z]+)(?:;\\s*(.*))?$",
+    RegexOption.IGNORE_CASE,
+)
 
-/** Parses appops output by taking the final operation/mode pair on each line. */
+/** Parses `appops get <package>` without treating unrelated prose or malformed names as operations. */
 fun parseAppOps(packageName: String, text: String): AppOpsAudit {
     val records = linkedMapOf<String, AppOpRecord>()
     for (raw in text.lineSequence()) {
-        val match = APP_OP_PAIR.findAll(raw.trim()).lastOrNull() ?: continue
+        val match = APP_OP_LINE.find(raw.trim()) ?: continue
         val op = match.groupValues[1].lowercase()
         val mode = match.groupValues[2].lowercase()
         if (mode in AppOpRecord.CHANGEABLE_MODES && isValidAppOp(op)) {
