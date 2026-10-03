@@ -1,6 +1,6 @@
 # VOID // APPS: roadmap and remaining work
 
-Updated: 2026-10-03. See `docs/HANDOFF.md` for the narrative and evidence.
+Updated: 2026-10-04. See `docs/HANDOFF.md` for the narrative and evidence.
 
 ## Product goal
 
@@ -20,8 +20,9 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 2. Read-only permission audit in app details. **Done, phone-verified on user and system apps.**
 3. Runtime permission parsing and authoritative User 0 read-back. **Done, phone-verified.**
 4. Guarded runtime Grant/Revoke with confirmation and read-back. **Done, phone-verified on a real app.**
-5. AppOps audit parser and explicit set/reset command model. **Implemented and unit-tested; one CI parser edge case fixed in the latest push.**
-6. Wire AppOps audit into App Details, then guarded set/reset with device read-back and honest unsupported results. **Next.**
+5. AppOps audit parser and explicit set/reset command model. **Done, unit-tested, CI #56 green.**
+6a. Read-only AppOps audit card in App Details (`appops get`, op/mode list, raw output). **Implemented; awaiting CI and phone test on Drive (system) and one user app.**
+6b. Guarded AppOps set/reset with device read-back and honest unsupported results. **Next, after 6a phone output is reviewed.**
 
 ## Then
 

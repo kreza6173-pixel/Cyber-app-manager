@@ -1,6 +1,6 @@
 # VOID // APPS: complete project handoff
 
-Updated: 2026-10-03 (night)
+Updated: 2026-10-04
 Branch: `native-app-v0`
 Application ID: `io.github.kreza6173pixel.voidapps`
 Reference device: Xiaomi Redmi Note 14, Global ROM, Android 16, SDK 36, Shizuku shell uid 2000.
@@ -28,7 +28,7 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 | A2 single-package operations | done | Suspend/Unsuspend user and system apps; protected apps show no actions |
 | A3 snapshots, undo, pins, batch | done | phone-verified |
 | Debloat track | done | CI green and owner phone acceptance, including search and cross-manager restore |
-| A4 permissions + AppOps | **in progress** | Permission audit and Grant/Revoke phone-verified. AppOps parser/model implemented and unit-tested; CI #53 to #55 red on parser edge cases, root cause fixed in the latest push (see section 7). AppOps UI and writes remain |
+| A4 permissions + AppOps | **in progress** | Permission audit and Grant/Revoke phone-verified. AppOps parser green (CI #56). Read-only AppOps audit card implemented, awaiting CI and phone test. AppOps writes remain |
 | A5 to A8 | open | |
 | 1.0 release | open | |
 
@@ -47,20 +47,26 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 
 ## 5. Current checkpoint and remaining path
 
-The latest successful phone checkpoint is permission audit plus runtime Grant/Revoke. CI #53 to #55 were red in `AppOpsTest`; the real root cause and fix are recorded in section 7. The latest push must be confirmed green before continuing.
+CI #56 is green with the anchored AppOps parser. The latest push adds the read-only AppOps audit card to App Details.
 
-After CI is green:
+Phone test for this push (owner):
 
-1. Add AppOps audit to App Details using `appops get <package>`.
-2. Show AppOps modes (`allow`, `deny`, `ignore`, `foreground`, `default`) separately from manifest permissions.
-3. Add guarded AppOps set/reset with valid-name and valid-mode checks, protected-app refusal, confirmation, and read-back.
-4. Phone-test Drive as a system app and a normal user app, then record unsupported OEM/API behavior honestly.
-5. Close A4 and move to A5: boot receivers, component control, and background AppOps.
-6. Continue A6 notifications/DND, A7 network controls, A8 APK/APKS/XAPK installer, then 1.0 release work.
+1. Open App Details for Drive (system app) and for one normal user app.
+2. Confirm the AppOps card appears below Permissions and lists op/mode pairs, or reports empty/unavailable honestly.
+3. Tap Show raw appops output, copy it, and compare it with the parsed list. Any line Android printed that the list missed or misread is a parser bug; attach the raw output to the report.
+4. Confirm nothing is changed by opening the screen (read-only).
+
+After the phone test:
+
+1. Add guarded AppOps set/reset with valid-name and valid-mode checks, protected-app refusal, confirmation, and read-back.
+2. Decide from real output whether uid mode and package mode must be shown as separate scopes (currently the last reported line per op wins).
+3. Close A4 and move to A5: boot receivers, component control, and background AppOps.
+4. Continue A6 notifications/DND, A7 network controls, A8 APK/APKS/XAPK installer, then 1.0 release work.
 
 ## 6. Design and safety decisions
 
 - AppOps is not the same thing as a runtime permission. Both are shown as separate sections.
+- AppOps audit keeps the raw `appops get` output visible so ROM-specific formats are checked against reality, not guessed.
 - Protected packages remain read-only even when Android exposes operations.
 - No change is reported APPLIED without read-back from Android.
 - APKM is out of scope; installer support is APK, APKS and XAPK only.
@@ -75,14 +81,15 @@ After CI is green:
   - #53 failed `parsesCommonAppOpsOutput` (AppOpsTest.kt:16): the regex was anchored with `matchEntire`, so `Uid mode: COARSE_LOCATION: foreground` (space inside the prefix) never matched.
   - #54 removed the start anchor. That fixed test 1 but broke `ignoresUnsupportedModesAndInvalidNames` (AppOpsTest.kt:27): `bad-name: deny` matched mid-line as op `name`, giving 2 operations instead of 1.
   - #55 switched to `findAll().lastOrNull()`, which produces identical results on these inputs, so it stayed red on line 27. The earlier note blaming the prefixed-line case for #55 was wrong.
-  - Fix: keep the start anchored and allow only an optional word prefix: `^(?:[A-Za-z ]+:\s*)?op:\s*mode(;detail)?$`. Both tests satisfied by the same pattern.
+  - Fix (`e587840`, CI #56 green): keep the start anchored and allow only an optional word prefix: `^(?:[A-Za-z ]+:\s*)?op:\s*mode(;detail)?$`.
+- Disable confirmation dialog showed the Suspend warning text (`actionWarning` mapped FREEZE to `warn_suspend`); now uses `warn_freeze`.
 - Android may stop the target process during permission changes; UI warns before Grant/Revoke.
 - Some OEM system packages cannot be removed under Shizuku shell; reported unsupported. Root/Dhizuku remain out of scope.
 
 ## 8. Remaining work, in order
 
-1. Confirm the anchored AppOps parser fix is green.
-2. AppOps audit UI, guarded set/reset, read-back, and Drive phone test.
+1. Confirm the AppOps audit card push is green, then phone-test it (section 5).
+2. Guarded AppOps set/reset with read-back, and Drive phone test.
 3. A5 boot receivers, component control, background AppOps.
 4. A6 notification listener, DND access, per-app notification mute.
 5. A7 Chain3 per-app network block and netpolicy background data.
@@ -97,4 +104,5 @@ After CI is green:
 - `1ea2245`: runtime parsing and Grant/Revoke.
 - `ec27559`, `49a285e`: authoritative runtime read-back.
 - `a85692c`, `822fac8`, `cb24d9e`: AppOps parser foundation and two unsuccessful parser fixes (CI #53 to #55 red).
-- current push: anchored AppOps parser with optional word prefix; corrected CI diagnosis.
+- `e587840`: anchored AppOps parser with optional word prefix (CI #56 green).
+- current push: read-only AppOps audit card, raw output toggle, header test, Disable warning fix.

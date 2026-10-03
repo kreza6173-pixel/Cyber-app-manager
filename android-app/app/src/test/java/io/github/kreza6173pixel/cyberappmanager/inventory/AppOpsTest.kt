@@ -29,6 +29,17 @@ class AppOpsTest {
         assertTrue(isValidAppOpMode("ignore"))
     }
 
+    @Test fun ignoresHeadersAndEmptyMarkers() {
+        val audit = parseAppOps("pkg", """
+            No operations.
+            Package com.example.app:
+              Uid mode: LEGACY_STORAGE: allow
+              CAMERA: ignore; rejectTime=+3h ago
+        """.trimIndent())
+        assertEquals(listOf("camera", "legacy_storage"), audit.operations.map { it.op })
+        assertEquals("ignore", audit.operations.first { it.op == "camera" }.mode)
+    }
+
     @Test fun commandsUseExplicitMode() {
         assertEquals("appops set pkg camera allow", appOpsSetCommand("pkg", "camera", "allow"))
         assertEquals("appops set pkg camera default", appOpsResetCommand("pkg", "camera"))

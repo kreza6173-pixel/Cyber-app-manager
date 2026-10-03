@@ -24,6 +24,7 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
     var entry by remember(pkg) { mutableStateOf(repository.entryFor(pkg)) }
     var details by remember(pkg) { mutableStateOf<DetailsResult?>(null) }
     var audit by remember(pkg) { mutableStateOf<PermissionAuditResult?>(null) }
+    var appOps by remember(pkg) { mutableStateOf<AppOpsAuditResult?>(null) }
     var busy by remember(pkg) { mutableStateOf(false) }
     var last by remember(pkg) { mutableStateOf<ActionResult?>(null) }
     var permResult by remember(pkg) { mutableStateOf<PermissionChangeResult?>(null) }
@@ -31,7 +32,7 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
     var permConfirm by remember(pkg) { mutableStateOf<PermissionChange?>(null) }
     var reload by remember(pkg) { mutableStateOf(0) }
     var pinned by remember(pkg) { mutableStateOf(pkg in repository.pins()) }
-    LaunchedEffect(pkg, connected, reload) { if (connected) { details = repository.details(pkg); audit = repository.permissionAudit(pkg); entry = repository.entryFor(pkg); pinned = pkg in repository.pins() } }
+    LaunchedEffect(pkg, connected, reload) { if (connected) { details = repository.details(pkg); audit = repository.permissionAudit(pkg); appOps = repository.appOpsAudit(pkg); entry = repository.entryFor(pkg); pinned = pkg in repository.pins() } }
 
     val pending = confirm
     if (pending != null) AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(actionLabel(pending))) }, text = { Text(stringResource(actionWarning(pending), entry?.label ?: pkg)) }, confirmButton = { TextButton({ confirm = null; busy = true; scope.launch { last = repository.perform(pkg, pending); entry = repository.entryFor(pkg); busy = false; reload++ } }) { Text(stringResource(R.string.action_confirm)) } }, dismissButton = { TextButton({ confirm = null }) { Text(stringResource(R.string.action_cancel)) } })
@@ -64,6 +65,7 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
         last?.let { ResultCard(it) }
         permResult?.let { PermissionResultCard(it) }
         PermissionAuditCard(audit, canChange = connected && !busy && e != null && e.protectedReason == null) { rec -> permConfirm = PermissionChange(rec, rec.granted != true) }
+        AppOpsAuditCard(appOps)
         when (val d = details) {
             null -> Text(stringResource(if (connected) R.string.apps_loading else R.string.apps_waiting))
             is DetailsResult.Error -> { Text(stringResource(R.string.detail_error), color = MaterialTheme.colorScheme.error); LtrMonoText(d.message); CopyShareButtons(d.message) }
@@ -104,6 +106,32 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
     }
 }
 
+/** AppOps are shown apart from manifest permissions. Read-only: no set/reset controls in this step. */
+@Composable private fun AppOpsAuditCard(result: AppOpsAuditResult?) {
+    var showRaw by remember(result) { mutableStateOf(false) }
+    when (result) {
+        null -> Text(stringResource(R.string.appops_loading), style = MaterialTheme.typography.titleSmall)
+        is AppOpsAuditResult.Error -> {
+            Text(stringResource(R.string.appops_error), color = MaterialTheme.colorScheme.error)
+            LtrMonoText(result.message)
+            CopyShareButtons(result.message)
+        }
+        is AppOpsAuditResult.Ok -> {
+            val ops = result.audit.operations
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(stringResource(R.string.appops_title), style = MaterialTheme.typography.titleSmall)
+                    if (ops.isEmpty()) Text(stringResource(R.string.appops_empty), style = MaterialTheme.typography.bodySmall)
+                    else SelectionContainer { Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { ops.forEach { op -> Text("${op.op} · ${op.mode}", style = MaterialTheme.typography.bodySmall, color = appOpColor(op.mode)) } } }
+                    Text(stringResource(R.string.appops_read_only), style = MaterialTheme.typography.labelSmall)
+                    TextButton({ showRaw = !showRaw }) { Text(stringResource(if (showRaw) R.string.appops_raw_hide else R.string.appops_raw_show)) }
+                    if (showRaw) { LtrMonoText(result.raw); CopyShareButtons(result.raw) }
+                }
+            }
+        }
+    }
+}
+
 @Composable private fun PermissionResultCard(r: PermissionChangeResult) {
     val report = "$ ${r.command}\n${r.output}\n\nbefore: ${permissionState(r.before)}\nafter: ${permissionState(r.after)}"
     Card(Modifier.fillMaxWidth()) {
@@ -123,10 +151,11 @@ private fun kindSuffix(p: PermissionRecord): String = when {
     else -> ""
 }
 @Composable private fun permissionColor(granted: Boolean?) = when (granted) { true -> MaterialTheme.colorScheme.primary; false -> MaterialTheme.colorScheme.error; null -> MaterialTheme.colorScheme.onSurfaceVariant }
+@Composable private fun appOpColor(mode: String) = when (mode) { "allow" -> MaterialTheme.colorScheme.primary; "foreground" -> MaterialTheme.colorScheme.tertiary; "deny", "ignore" -> MaterialTheme.colorScheme.error; else -> MaterialTheme.colorScheme.onSurfaceVariant }
 private fun verdictRes(v: Verdict) = when (v) { Verdict.APPLIED -> R.string.verdict_applied; Verdict.NOT_APPLIED -> R.string.verdict_not_applied; Verdict.UNVERIFIABLE -> R.string.verdict_unverifiable; Verdict.REFUSED -> R.string.verdict_refused; Verdict.FAILED -> R.string.verdict_failed }
 @Composable private fun ResultCard(r: ActionResult) { val report = "$ ${r.command}\n${r.output}\n\nread-back:\n${r.readBack}"; Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) { Text(stringResource(actionLabel(r.action)) + ": " + stringResource(verdictRes(r.verdict)), color = if (r.verdict == Verdict.APPLIED) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error); LtrMonoText(report); CopyShareButtons(report) } } }
 @Composable private fun Field(label: String, value: String) { Column { Text(label, style = MaterialTheme.typography.labelMedium); LtrMonoText(value) } }
 private fun riskLabel(r: Risk) = when (r) { Risk.SAFE -> R.string.risk_safe; Risk.CAUTION -> R.string.risk_caution; Risk.CORE -> R.string.risk_core; Risk.USER -> R.string.risk_user }
 private fun stateLabel(s: AppState) = when (s) { AppState.ENABLED -> R.string.detail_state_enabled; AppState.FROZEN -> R.string.detail_state_frozen; AppState.SUSPENDED -> R.string.detail_state_suspended; AppState.REMOVED -> R.string.detail_state_removed }
 private fun actionLabel(a: AppAction) = when (a) { AppAction.SUSPEND -> R.string.action_suspend; AppAction.UNSUSPEND -> R.string.action_unsuspend; AppAction.FREEZE -> R.string.action_freeze; AppAction.UNFREEZE -> R.string.action_unfreeze; AppAction.FORCE_STOP -> R.string.action_force_stop; AppAction.REMOVE -> R.string.action_remove; AppAction.RESTORE -> R.string.action_restore; AppAction.CLEAR_DATA -> R.string.action_clear }
-private fun actionWarning(a: AppAction) = when (a) { AppAction.SUSPEND -> R.string.warn_suspend; AppAction.FREEZE -> R.string.warn_suspend; AppAction.REMOVE -> R.string.warn_remove; AppAction.CLEAR_DATA -> R.string.warn_clear; else -> R.string.warn_generic }
+private fun actionWarning(a: AppAction) = when (a) { AppAction.SUSPEND -> R.string.warn_suspend; AppAction.FREEZE -> R.string.warn_freeze; AppAction.REMOVE -> R.string.warn_remove; AppAction.CLEAR_DATA -> R.string.warn_clear; else -> R.string.warn_generic }

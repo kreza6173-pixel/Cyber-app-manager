@@ -12,6 +12,7 @@ import java.util.UUID
 sealed interface InventoryResult { data class Ok(val entries: List<AppEntry>, val counts: InventoryCounts) : InventoryResult; data class Error(val message: String) : InventoryResult }
 sealed interface DetailsResult { data class Ok(val details: PackageDetails, val raw: String) : DetailsResult; data class Error(val message: String) : DetailsResult }
 sealed interface PermissionAuditResult { data class Ok(val audit: PermissionAudit) : PermissionAuditResult; data class Error(val message: String) : PermissionAuditResult }
+sealed interface AppOpsAuditResult { data class Ok(val audit: AppOpsAudit, val raw: String) : AppOpsAuditResult; data class Error(val message: String) : AppOpsAuditResult }
 data class ActionResult(val action: AppAction, val verdict: Verdict, val command: String, val output: String, val readBack: String, val snapshotId: String? = null)
 data class PermissionChangeResult(val pkg: String, val permission: String, val grant: Boolean, val verdict: Verdict, val command: String, val output: String, val before: Boolean?, val after: Boolean?)
 data class RestoreStepResult(val pkg: String, val operation: SnapshotOperation, val verdict: Verdict, val detail: String)
@@ -63,6 +64,15 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
             }
         }
         PermissionAuditResult.Ok(parsed.copy(permissions = parsed.permissions.map { p -> if (p.runtime && checked[p.name] != null) p.copy(granted = checked[p.name]) else p }))
+    }
+
+    /** Read-only AppOps audit through `appops get`. Raw output is kept so unknown ROM formats stay visible instead of being guessed. */
+    suspend fun appOpsAudit(pkg: String): AppOpsAuditResult = withContext(Dispatchers.IO) {
+        if (!isValidPackageName(pkg)) return@withContext AppOpsAuditResult.Error("invalid package name: $pkg")
+        when (val r = shell("appops get ${ShellQuoting.quote(pkg)}", false)) {
+            is ShellResult.Ok -> AppOpsAuditResult.Ok(parseAppOps(pkg, r.stdout), r.stdout.trim())
+            is ShellResult.Bad -> AppOpsAuditResult.Error(r.message)
+        }
     }
 
     suspend fun setPermission(pkg: String, permission: String, grant: Boolean): PermissionChangeResult = withContext(Dispatchers.IO) {
