@@ -10,12 +10,12 @@ object AppActions {
         if (e.protectedReason != null) return emptyList()
         return when (e.state) {
             AppState.ENABLED -> buildList {
-                if (!e.isSystem) add(AppAction.SUSPEND)
+                add(AppAction.SUSPEND)
                 add(AppAction.FORCE_STOP)
                 add(AppAction.CLEAR_DATA)
                 if (e.isSystem) add(AppAction.REMOVE)
             }
-            AppState.SUSPENDED -> if (!e.isSystem) listOf(AppAction.UNSUSPEND) else emptyList()
+            AppState.SUSPENDED -> listOf(AppAction.UNSUSPEND)
             AppState.FROZEN -> buildList {
                 add(AppAction.UNFREEZE)
                 if (e.isSystem) add(AppAction.REMOVE)
