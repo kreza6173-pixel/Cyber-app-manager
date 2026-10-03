@@ -69,7 +69,7 @@ fun SnapshotsScreen(repository: InventoryRepository, modifier: Modifier = Modifi
         AlertDialog(
             onDismissRequest = { selected = null },
             title = { Text(snapshot.name) },
-            text = { Text(snapshot.entries.joinToString("\\n") { "${it.pkg} · ${it.state.name.lowercase()}" }) },
+            text = { Text(snapshot.entries.joinToString("\n") { "${it.pkg} · ${it.state.name.lowercase()}" }) },
             confirmButton = { TextButton(onClick = { selected = null }) { Text(stringResource(R.string.action_close)) } },
         )
     }
