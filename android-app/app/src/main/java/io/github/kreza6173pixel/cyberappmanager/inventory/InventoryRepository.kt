@@ -46,7 +46,7 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         when (val r = shell("dumpsys package ${ShellQuoting.quote(pkg)} | grep -E ${ShellQuoting.quote(DETAIL_PATTERN)} | head -n 20", true)) { is ShellResult.Ok -> { val p = parsePackageDetails(r.stdout); AppActions.stateFrom(p.userFlags)?.let { updateState(pkg, it) }; DetailsResult.Ok(p, r.stdout.trim()) }; is ShellResult.Bad -> DetailsResult.Error(r.message) }
     }
 
-    /** Full dumpsys is required here. Filtering out section headers can make a real grant look denied. */
+    /** Full dumpsys keeps section headers; pm check-permission is the authority for runtime state. */
     suspend fun permissionAudit(pkg: String): PermissionAuditResult = withContext(Dispatchers.IO) {
         if (!isValidPackageName(pkg)) return@withContext PermissionAuditResult.Error("invalid package name: $pkg")
         val q = ShellQuoting.quote(pkg)
@@ -54,12 +54,15 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         val parsed = parsePermissionAudit(pkg, raw)
         val runtime = parsed.permissions.filter { it.runtime }
         if (runtime.isEmpty()) return@withContext PermissionAuditResult.Ok(parsed)
-        val checks = runtime.joinToString("; ") { p -> "printf '%s\\n' ${ShellQuoting.quote(p.name + \"=\$(pm check-permission $q ${ShellQuoting.quote(p.name)} 0)\")}" }
-        val checked = when (val r = shell(checks, true)) {
-            is ShellResult.Ok -> r.stdout.lineSequence().mapNotNull { line -> val i = line.indexOf('='); if (i <= 0) null else line.substring(0, i) to when (line.substring(i + 1).trim().lowercase()) { "granted" -> true; "denied" -> false; else -> null } }.toMap()
-            is ShellResult.Bad -> emptyMap()
+        val checks = runtime.joinToString("; ") { p -> "printf '%s\\n' ${ShellQuoting.quote(p.name)}; pm check-permission $q ${ShellQuoting.quote(p.name)} 0" }
+        val lines = when (val r = shell(checks, true)) { is ShellResult.Ok -> r.stdout.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList(); is ShellResult.Bad -> emptyList() }
+        val checked = buildMap<String, Boolean?> {
+            runtime.forEachIndexed { index, p ->
+                val answer = lines.getOrNull(index * 2)?.let { lines.getOrNull(index * 2 + 1) }
+                put(p.name, when (answer?.lowercase()) { "granted" -> true; "denied" -> false; else -> null })
+            }
         }
-        PermissionAuditResult.Ok(parsed.copy(permissions = parsed.permissions.map { p -> if (p.runtime && checked.containsKey(p.name)) p.copy(granted = checked[p.name]) else p }))
+        PermissionAuditResult.Ok(parsed.copy(permissions = parsed.permissions.map { p -> if (p.runtime && checked[p.name] != null) p.copy(granted = checked[p.name]) else p }))
     }
 
     suspend fun setPermission(pkg: String, permission: String, grant: Boolean): PermissionChangeResult = withContext(Dispatchers.IO) {
