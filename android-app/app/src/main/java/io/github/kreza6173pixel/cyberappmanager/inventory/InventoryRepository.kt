@@ -46,21 +46,21 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         when (val r = shell("dumpsys package ${ShellQuoting.quote(pkg)} | grep -E ${ShellQuoting.quote(DETAIL_PATTERN)} | head -n 20", true)) { is ShellResult.Ok -> { val p = parsePackageDetails(r.stdout); AppActions.stateFrom(p.userFlags)?.let { updateState(pkg, it) }; DetailsResult.Ok(p, r.stdout.trim()) }; is ShellResult.Bad -> DetailsResult.Error(r.message) }
     }
 
-    /** `pm check-permission` is the authority for runtime state; dumpsys supplies type and flags. */
+    /** Full dumpsys is required here. Filtering out section headers can make a real grant look denied. */
     suspend fun permissionAudit(pkg: String): PermissionAuditResult = withContext(Dispatchers.IO) {
         if (!isValidPackageName(pkg)) return@withContext PermissionAuditResult.Error("invalid package name: $pkg")
         val q = ShellQuoting.quote(pkg)
-        val source = when (val r = shell("dumpsys package $q | sed -n '/^Packages:/,/^[A-Za-z]/p'", true)) { is ShellResult.Ok -> if (r.stdout.contains("requested permissions:") || r.stdout.contains("install permissions:")) r.stdout else fallback(pkg); is ShellResult.Bad -> return@withContext PermissionAuditResult.Error(r.message) }
-        val parsed = parsePermissionAudit(pkg, source)
+        val raw = when (val r = shell("dumpsys package $q", false)) { is ShellResult.Ok -> r.stdout; is ShellResult.Bad -> return@withContext PermissionAuditResult.Error(r.message) }
+        val parsed = parsePermissionAudit(pkg, raw)
         val runtime = parsed.permissions.filter { it.runtime }
         if (runtime.isEmpty()) return@withContext PermissionAuditResult.Ok(parsed)
-        val checks = runtime.joinToString("; ") { p -> "printf '%s=' ${ShellQuoting.quote(p.name)}; pm check-permission $q ${ShellQuoting.quote(p.name)} 0" }
-        val checked = when (val r = shell(checks, true)) { is ShellResult.Ok -> r.stdout.lineSequence().mapNotNull { line -> val i = line.lastIndexOf('='); if (i <= 0) null else line.substring(0, i) to when (line.substring(i + 1).trim().lowercase()) { "granted" -> true; "denied" -> false; else -> null } }.toMap(); is ShellResult.Bad -> emptyMap() }
-        val authoritative = parsed.permissions.map { p -> if (p.runtime && checked.containsKey(p.name)) p.copy(granted = checked[p.name]) else p }
-        PermissionAuditResult.Ok(parsed.copy(permissions = authoritative))
+        val checks = runtime.joinToString("; ") { p -> "printf '%s\\n' ${ShellQuoting.quote(p.name + \"=\$(pm check-permission $q ${ShellQuoting.quote(p.name)} 0)\")}" }
+        val checked = when (val r = shell(checks, true)) {
+            is ShellResult.Ok -> r.stdout.lineSequence().mapNotNull { line -> val i = line.indexOf('='); if (i <= 0) null else line.substring(0, i) to when (line.substring(i + 1).trim().lowercase()) { "granted" -> true; "denied" -> false; else -> null } }.toMap()
+            is ShellResult.Bad -> emptyMap()
+        }
+        PermissionAuditResult.Ok(parsed.copy(permissions = parsed.permissions.map { p -> if (p.runtime && checked.containsKey(p.name)) p.copy(granted = checked[p.name]) else p }))
     }
-
-    private suspend fun fallback(pkg: String): String = when (val f = shell("dumpsys package ${ShellQuoting.quote(pkg)} | grep -E ${ShellQuoting.quote(PERMISSION_FALLBACK)}", true)) { is ShellResult.Ok -> f.stdout; is ShellResult.Bad -> "" }
 
     suspend fun setPermission(pkg: String, permission: String, grant: Boolean): PermissionChangeResult = withContext(Dispatchers.IO) {
         fun refused(reason: String, before: Boolean? = null) = PermissionChangeResult(pkg, permission, grant, Verdict.REFUSED, "", reason, before, before)
@@ -87,5 +87,5 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
     private fun labelOf(pm: PackageManager, pkg: String): String? = runCatching { @Suppress("DEPRECATION") val i = pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES or PackageManager.MATCH_DISABLED_COMPONENTS); pm.getApplicationLabel(i).toString() }.getOrNull()
     private sealed interface ShellResult { data class Ok(val stdout: String) : ShellResult; data class Bad(val message: String) : ShellResult }
     private fun shell(command: String, allowExitOne: Boolean): ShellResult = when (val o = bridge.execBlocking(command, TIMEOUT_MS)) { is ExecOutcome.Failed -> ShellResult.Bad(o.message); is ExecOutcome.Completed -> { val r = o.result; when { r.truncated -> ShellResult.Bad("output truncated (64 KiB cap): $command"); r.exitCode == 0 || (allowExitOne && r.exitCode == 1) -> ShellResult.Ok(r.stdout); else -> ShellResult.Bad("exit ${r.exitCode}: $command\n${r.stderr.trim()}") } } }
-    private companion object { const val TIMEOUT_MS = 20_000; val LIST_COMMANDS = listOf("pm list packages -u | sed 's/^package://'", "pm list packages | sed 's/^package://'", "pm list packages -d | sed 's/^package://'", "pm list packages --suspended | sed 's/^package://'", "pm list packages -s -u | sed 's/^package://'"); const val DETAIL_PATTERN = "versionName=|versionCode=|firstInstallTime=|lastUpdateTime=|installerPackageName=|User 0:"; const val PERMISSION_FALLBACK = "requested permissions:|install permissions:|runtime permissions:|^[[:space:]]*User [0-9]+:|^[[:space:]]+[A-Za-z][A-Za-z0-9_.]*(: .*)?$" }
+    private companion object { const val TIMEOUT_MS = 20_000; val LIST_COMMANDS = listOf("pm list packages -u | sed 's/^package://'", "pm list packages | sed 's/^package://'", "pm list packages -d | sed 's/^package://'", "pm list packages --suspended | sed 's/^package://'", "pm list packages -s -u | sed 's/^package://'"); const val DETAIL_PATTERN = "versionName=|versionCode=|firstInstallTime=|lastUpdateTime=|installerPackageName=|User 0:" }
 }
