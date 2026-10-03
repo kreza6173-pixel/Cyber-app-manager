@@ -66,13 +66,23 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         PermissionAuditResult.Ok(parsed.copy(permissions = parsed.permissions.map { p -> if (p.runtime && checked[p.name] != null) p.copy(granted = checked[p.name]) else p }))
     }
 
-    /** Read-only AppOps audit through `appops get`. Raw output is kept so unknown ROM formats stay visible instead of being guessed. */
+    /**
+     * Read-only AppOps audit. `appops get <package>` gives uid block + package block; `appops get <uid>` gives
+     * only the uid block, which lets the scopes be separated. Without a uid answer the merged view is used.
+     * Raw output of both commands is kept so ROM formats stay visible instead of being guessed.
+     */
     suspend fun appOpsAudit(pkg: String): AppOpsAuditResult = withContext(Dispatchers.IO) {
         if (!isValidPackageName(pkg)) return@withContext AppOpsAuditResult.Error("invalid package name: $pkg")
-        when (val r = shell("appops get ${ShellQuoting.quote(pkg)}", false)) {
-            is ShellResult.Ok -> AppOpsAuditResult.Ok(parseAppOps(pkg, r.stdout), r.stdout.trim())
-            is ShellResult.Bad -> AppOpsAuditResult.Error(r.message)
+        val q = ShellQuoting.quote(pkg)
+        val full = when (val r = shell("appops get $q", false)) { is ShellResult.Ok -> r.stdout; is ShellResult.Bad -> return@withContext AppOpsAuditResult.Error(r.message) }
+        val uid = (shell("pm list packages -U $q", true) as? ShellResult.Ok)?.let { uidOf(pkg, it.stdout) }
+        val uidText = uid?.let { (shell("appops get $it", false) as? ShellResult.Ok)?.stdout }
+        val audit = if (uidText != null) parseAppOpsScoped(pkg, full, uidText) else parseAppOps(pkg, full)
+        val raw = buildString {
+            append("$ appops get ").append(pkg).append('\n').append(full.trim())
+            if (uid != null && uidText != null) append("\n\n$ appops get ").append(uid).append(" (uid)\n").append(uidText.trim())
         }
+        AppOpsAuditResult.Ok(audit, raw)
     }
 
     suspend fun setPermission(pkg: String, permission: String, grant: Boolean): PermissionChangeResult = withContext(Dispatchers.IO) {

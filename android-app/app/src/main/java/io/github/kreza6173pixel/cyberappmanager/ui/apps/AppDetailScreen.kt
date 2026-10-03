@@ -126,7 +126,7 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(stringResource(R.string.appops_title), style = MaterialTheme.typography.titleSmall)
                     if (ops.isEmpty()) Text(stringResource(R.string.appops_empty), style = MaterialTheme.typography.bodySmall)
-                    else SelectionContainer { Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { ops.forEach { op -> Text("${op.op} · ${op.mode}${appOpSuffix(op)}", style = MaterialTheme.typography.bodySmall, color = appOpColor(op.mode)) } } }
+                    else SelectionContainer { Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { ops.forEach { op -> Text(appOpLabel(op), style = MaterialTheme.typography.bodySmall, color = appOpColor(op.mode)) } } }
                     Text(stringResource(R.string.appops_read_only), style = MaterialTheme.typography.labelSmall)
                     TextButton({ showRaw = !showRaw }) { Text(stringResource(if (showRaw) R.string.appops_raw_hide else R.string.appops_raw_show)) }
                     if (showRaw) { LtrMonoText(result.raw); CopyShareButtons(result.raw) }
@@ -154,8 +154,15 @@ private fun kindSuffix(p: PermissionRecord): String = when {
     p.granted != null -> " · install-time"
     else -> ""
 }
-private fun appOpSuffix(op: AppOpRecord): String = buildString {
-    if (op.alsoReported.isNotEmpty()) append(" (also reported: " + op.alsoReported.joinToString(", ") + ")")
+private fun appOpLabel(op: AppOpRecord): String = buildString {
+    append(op.op)
+    if (op.scoped) {
+        op.uidMode?.let { append(" · uid: ").append(it) }
+        op.packageMode?.let { append(" · package: ").append(it) }
+    } else {
+        append(" · ").append(op.mode)
+        if (op.alsoReported.isNotEmpty()) append(" (also reported: " + op.alsoReported.joinToString(", ") + ")")
+    }
     if (op.oem) append(" · OEM · read-only")
 }
 @Composable private fun permissionColor(granted: Boolean?) = when (granted) { true -> MaterialTheme.colorScheme.primary; false -> MaterialTheme.colorScheme.error; null -> MaterialTheme.colorScheme.onSurfaceVariant }

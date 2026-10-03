@@ -17,13 +17,15 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 ## In progress: A4 permissions and AppOps
 
 1. Permission parser for `dumpsys package`. **Done.**
-2. Read-only permission audit in app details. **Done on small apps; large apps (Drive, 128886 bytes) fixed with an on-device numbered filter, awaiting phone re-test.**
+2. Read-only permission audit in app details. **Done, phone-verified on small apps and on Drive, Meet, Play Store (active `Packages:` block read).**
 3. Runtime permission parsing and authoritative User 0 read-back. **Done, phone-verified.**
-4. Guarded runtime Grant/Revoke with confirmation and read-back. **Done, phone-verified on a real app.**
-5. AppOps audit parser and explicit set/reset command model. **Done, unit-tested, CI #56 green.**
-6a. Read-only AppOps audit card in App Details. **Phone-verified on Drive. Follow-up: OEM ops (MIUIOP) shown read-only, duplicate modes shown; awaiting CI and re-test.**
-6b. Uid scope vs package scope. `appops get --uid <pkg>` returns the package output on this ROM; probe `appops get <uid>` next.
-6c. Guarded AppOps set/reset with device read-back and honest unsupported results. **After 6b.**
+4. Guarded runtime Grant/Revoke with confirmation and read-back. **Done, phone-verified on Drive, Meet, Play Store (camera, location round-trip confirmed inside the apps).**
+5. AppOps audit parser and explicit set/reset command model. **Done, unit-tested.**
+6a. Read-only AppOps audit card, OEM ops, duplicate modes. **Done, phone-verified on Drive.**
+6b. Uid scope vs package scope via `appops get <uid>`. **Implemented; awaiting CI and phone test.**
+6c. MIUI system apps (`com.miui.securitycenter`): dangerous permissions show `unknown`. **Probe pending** (likely shared-user or a section outside `Packages:`).
+6d. Guarded AppOps set/reset with scope, device read-back and honest unsupported results. **After 6b and 6c.**
+7. Read-only Self-check over all packages (permission audit and AppOps parse, size cap hits, unknown lines). **After 6d.**
 
 ## Then
 
@@ -35,4 +37,4 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 
 ## Gates
 
-No INTERNET permission. No protected bypass. No destructive batch without preview and snapshot. No support claim without a device probe. No release claim while CI or device acceptance is red. Code and its strings/resources always land in one commit.
+No INTERNET permission. No protected bypass. No destructive batch without preview and snapshot. No support claim without a device probe. No release claim while CI or device acceptance is red. Code and its strings/resources always land in one commit. Shell filters are measured on the phone before they are pushed.

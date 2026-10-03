@@ -3,7 +3,8 @@ package io.github.kreza6173pixel.cyberappmanager.inventory
 /**
  * Android AppOps state for one package. This is separate from manifest/runtime permissions.
  * [oem] marks vendor operations such as `MIUIOP(10008)`: shown for honesty, never changeable.
- * [alsoReported] lists other modes Android printed for the same op (for example uid scope and package scope).
+ * [alsoReported] lists other modes Android printed for the same op when scopes could not be separated.
+ * [uidMode] / [packageMode] are filled when uid and package scopes were separated ([scoped] = true).
  */
 data class AppOpRecord(
     val op: String,
@@ -11,6 +12,9 @@ data class AppOpRecord(
     val detail: String = "",
     val oem: Boolean = false,
     val alsoReported: List<String> = emptyList(),
+    val uidMode: String? = null,
+    val packageMode: String? = null,
+    val scoped: Boolean = false,
 ) {
     val changeable: Boolean get() = !oem && mode in CHANGEABLE_MODES
     companion object { val CHANGEABLE_MODES = setOf("allow", "deny", "ignore", "foreground", "default") }
@@ -29,23 +33,58 @@ private val APP_OP_LINE = Regex(
     RegexOption.IGNORE_CASE,
 )
 private val OEM_APP_OP = Regex("^[a-z][a-z0-9_]*\\(\\d+\\)$")
+private val PACKAGE_UID = Regex("^package:(\\S+)\\s+uid:(\\d+)")
 
-/** Parses `appops get <package>` without treating unrelated prose or malformed names as operations. */
+private data class OpLine(val op: String, val mode: String, val detail: String, val oem: Boolean)
+
+/** Every usable operation line, in the order Android printed them. */
+private fun opLines(text: String): List<OpLine> = text.lineSequence().mapNotNull { raw ->
+    val match = APP_OP_LINE.find(raw.trim()) ?: return@mapNotNull null
+    val op = match.groupValues[1].lowercase()
+    val mode = match.groupValues[2].lowercase()
+    val oem = OEM_APP_OP.matches(op)
+    if (mode !in AppOpRecord.CHANGEABLE_MODES || (!oem && !isValidAppOp(op))) null
+    else OpLine(op, mode, match.groupValues.getOrNull(3).orEmpty(), oem)
+}.toList()
+
+/** Merged view of `appops get <package>`: one record per op, other reported modes kept in [AppOpRecord.alsoReported]. */
 fun parseAppOps(packageName: String, text: String): AppOpsAudit {
     val records = linkedMapOf<String, AppOpRecord>()
-    for (raw in text.lineSequence()) {
-        val match = APP_OP_LINE.find(raw.trim()) ?: continue
-        val op = match.groupValues[1].lowercase()
-        val mode = match.groupValues[2].lowercase()
-        if (mode !in AppOpRecord.CHANGEABLE_MODES) continue
-        val oem = OEM_APP_OP.matches(op)
-        if (!oem && !isValidAppOp(op)) continue
-        val previous = records[op]
-        val also = if (previous == null) emptyList() else (previous.alsoReported + previous.mode).distinct().filter { it != mode }
-        records[op] = AppOpRecord(op, mode, match.groupValues.getOrNull(3).orEmpty(), oem, also)
+    for (line in opLines(text)) {
+        val previous = records[line.op]
+        val also = if (previous == null) emptyList() else (previous.alsoReported + previous.mode).distinct().filter { it != line.mode }
+        records[line.op] = AppOpRecord(line.op, line.mode, line.detail, line.oem, also)
     }
     return AppOpsAudit(packageName, records.values.sortedBy { it.op })
 }
+
+/**
+ * Scoped view. On the reference ROM `appops get <uid>` prints only the uid block, and `appops get <package>`
+ * prints that same block first, then the package block. The leading lines of [packageText] that match
+ * [uidText] line by line are uid scope; the rest is package scope. If the prefix does not match exactly,
+ * the merged [parseAppOps] view is returned instead of guessing.
+ */
+fun parseAppOpsScoped(packageName: String, packageText: String, uidText: String): AppOpsAudit {
+    val all = opLines(packageText)
+    val uid = opLines(uidText)
+    val prefixMatches = uid.isNotEmpty() && uid.size <= all.size && uid.indices.all { all[it].op == uid[it].op && all[it].mode == uid[it].mode }
+    if (!prefixMatches) return parseAppOps(packageName, packageText)
+    val uidByOp = uid.associateBy { it.op }
+    val pkgByOp = all.drop(uid.size).associateBy { it.op }
+    val records = (uidByOp.keys + pkgByOp.keys).mapNotNull { op ->
+        val u = uidByOp[op]
+        val p = pkgByOp[op]
+        val main = p ?: u ?: return@mapNotNull null
+        AppOpRecord(op, main.mode, main.detail, main.oem, emptyList(), u?.mode, p?.mode, true)
+    }
+    return AppOpsAudit(packageName, records.sortedBy { it.op })
+}
+
+/** Exact uid from `pm list packages -U <filter>`; the filter is a substring match, so the name must be equal. */
+fun uidOf(pkg: String, listOutput: String): Int? = listOutput.lineSequence()
+    .mapNotNull { PACKAGE_UID.find(it.trim()) }
+    .firstOrNull { it.groupValues[1] == pkg }
+    ?.groupValues?.get(2)?.toIntOrNull()
 
 /** Strict: OEM ops never pass, so set/reset commands can only target standard AppOps names. */
 fun isValidAppOp(name: String): Boolean = name.matches(Regex("^[a-z][a-z0-9_]*$"))
