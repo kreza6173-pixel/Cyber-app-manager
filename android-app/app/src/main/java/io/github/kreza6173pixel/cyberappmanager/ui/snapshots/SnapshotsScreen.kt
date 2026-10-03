@@ -23,20 +23,68 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.kreza6173pixel.cyberappmanager.R
 import io.github.kreza6173pixel.cyberappmanager.inventory.InventoryRepository
+import io.github.kreza6173pixel.cyberappmanager.inventory.RestoreReport
 import io.github.kreza6173pixel.cyberappmanager.inventory.Snapshot
+import io.github.kreza6173pixel.cyberappmanager.inventory.SnapshotStep
+import io.github.kreza6173pixel.cyberappmanager.inventory.Verdict
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
 @Composable
-fun SnapshotsScreen(repository: InventoryRepository, modifier: Modifier = Modifier) {
+fun SnapshotsScreen(repository: InventoryRepository, connected: Boolean, modifier: Modifier = Modifier) {
+    val scope = rememberCoroutineScope()
     var snapshots by remember { mutableStateOf(emptyList<Snapshot>()) }
     var selected by remember { mutableStateOf<Snapshot?>(null) }
     var deleteTarget by remember { mutableStateOf<Snapshot?>(null) }
+    var restoreTarget by remember { mutableStateOf<Snapshot?>(null) }
+    var restorePlan by remember { mutableStateOf(emptyList<SnapshotStep>()) }
+    var report by remember { mutableStateOf<RestoreReport?>(null) }
+    var busy by remember { mutableStateOf(false) }
     var refresh by remember { mutableStateOf(0) }
     LaunchedEffect(refresh) { snapshots = repository.snapshots() }
 
     deleteTarget?.let { target ->
         AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text(stringResource(R.string.snapshot_delete_title)) }, text = { Text(stringResource(R.string.snapshot_delete_warning, target.name)) }, confirmButton = { TextButton(onClick = { repository.deleteSnapshot(target.id); snapshots = repository.snapshots(); if (selected?.id == target.id) selected = null; deleteTarget = null }) { Text(stringResource(R.string.action_delete)) } }, dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.action_cancel)) } })
+    }
+
+    restoreTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { if (!busy) restoreTarget = null },
+            title = { Text(stringResource(R.string.snapshot_restore_title)) },
+            text = {
+                Text(
+                    when {
+                        busy -> stringResource(R.string.snapshot_restore_working)
+                        restorePlan.isEmpty() -> stringResource(R.string.snapshot_restore_nothing)
+                        else -> stringResource(R.string.snapshot_restore_warning, restorePlan.size)
+                    }
+                )
+            },
+            confirmButton = {
+                if (restorePlan.isNotEmpty()) TextButton(enabled = connected && !busy, onClick = {
+                    busy = true
+                    scope.launch {
+                        report = repository.restoreSnapshot(target.id)
+                        busy = false
+                        restoreTarget = null
+                        refresh++
+                    }
+                }) { Text(stringResource(R.string.action_confirm)) }
+            },
+            dismissButton = { TextButton(enabled = !busy, onClick = { restoreTarget = null }) { Text(stringResource(R.string.action_cancel)) } },
+        )
+    }
+
+    report?.let { r ->
+        val applied = r.results.count { it.verdict == Verdict.APPLIED }
+        val lines = r.results.joinToString("\n") { "${it.pkg} · ${it.operation.name.lowercase()} · ${it.verdict.name.lowercase()}" }
+        AlertDialog(
+            onDismissRequest = { report = null },
+            title = { Text(stringResource(R.string.snapshot_restore_result_title)) },
+            text = { SelectionContainer { Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(stringResource(R.string.snapshot_restore_result, applied, r.results.size - applied)); Text(lines) } } },
+            confirmButton = { TextButton(onClick = { report = null }) { Text(stringResource(R.string.action_close)) } },
+        )
     }
 
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -45,7 +93,27 @@ fun SnapshotsScreen(repository: InventoryRepository, modifier: Modifier = Modifi
         if (snapshots.isEmpty()) Text(stringResource(R.string.snapshots_empty)) else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(snapshots, key = { it.id }) { snapshot -> Card(onClick = { selected = snapshot }, modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text(snapshot.name, style = MaterialTheme.typography.titleMedium); Text(stringResource(R.string.snapshot_meta, snapshot.entries.size, formatDate(snapshot.createdAtMs))); OutlinedButton(onClick = { deleteTarget = snapshot }) { Text(stringResource(R.string.action_delete)) } } } } }
     }
 
-    selected?.let { snapshot -> val detailText = snapshot.entries.joinToString("\n") { "${it.pkg} · ${it.state.name.lowercase()}" }; AlertDialog(onDismissRequest = { selected = null }, title = { Text(snapshot.name) }, text = { SelectionContainer { Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState())) { Text(detailText) } } }, confirmButton = { TextButton(onClick = { selected = null }) { Text(stringResource(R.string.action_close)) } }) }
+    selected?.let { snapshot ->
+        val detailText = snapshot.entries.joinToString("\n") { "${it.pkg} · ${it.state.name.lowercase()}" }
+        AlertDialog(
+            onDismissRequest = { selected = null },
+            title = { Text(snapshot.name) },
+            text = { SelectionContainer { Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState())) { Text(detailText) } } },
+            confirmButton = { TextButton(onClick = { selected = null }) { Text(stringResource(R.string.action_close)) } },
+            dismissButton = {
+                TextButton(enabled = connected && !busy, onClick = {
+                    val target = snapshot
+                    selected = null
+                    busy = true
+                    scope.launch {
+                        restorePlan = repository.planRestore(target.id) ?: emptyList()
+                        busy = false
+                        restoreTarget = target
+                    }
+                }) { Text(stringResource(R.string.action_restore)) }
+            },
+        )
+    }
 }
 
 private fun formatDate(timeMs: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(timeMs))

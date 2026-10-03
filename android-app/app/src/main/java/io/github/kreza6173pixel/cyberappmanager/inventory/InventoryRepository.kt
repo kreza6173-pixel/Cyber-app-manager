@@ -12,6 +12,17 @@ import java.util.UUID
 sealed interface InventoryResult { data class Ok(val entries: List<AppEntry>, val counts: InventoryCounts) : InventoryResult; data class Error(val message: String) : InventoryResult }
 sealed interface DetailsResult { data class Ok(val details: PackageDetails, val raw: String) : DetailsResult; data class Error(val message: String) : DetailsResult }
 data class ActionResult(val action: AppAction, val verdict: Verdict, val command: String, val output: String, val readBack: String, val snapshotId: String? = null)
+data class RestoreStepResult(val pkg: String, val operation: SnapshotOperation, val verdict: Verdict, val detail: String)
+data class RestoreReport(val planned: Int, val results: List<RestoreStepResult>, val safetySnapshotId: String?)
+
+/** Maps a planned snapshot step to the shell action that performs it. */
+fun actionFor(op: SnapshotOperation): AppAction = when (op) {
+    SnapshotOperation.RESTORE_PACKAGE -> AppAction.RESTORE
+    SnapshotOperation.ENABLE -> AppAction.UNFREEZE
+    SnapshotOperation.DISABLE -> AppAction.FREEZE
+    SnapshotOperation.SUSPEND -> AppAction.SUSPEND
+    SnapshotOperation.UNSUSPEND -> AppAction.UNSUSPEND
+}
 
 class InventoryRepository(private val context: Context, private val bridge: ExecBridge, private val snapshotStore: SnapshotStore = SnapshotStore(context), private val pinStore: PinStore = PinStore(context)) {
     @Volatile var cached: InventoryResult? = null; private set
@@ -46,6 +57,37 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         when (after) { is DetailsResult.Ok -> { flags = after.details.userFlags; raw = after.raw }; is DetailsResult.Error -> { flags = emptyMap(); raw = after.message } }
         val verdict = AppActions.verify(action, flags, output); AppActions.stateFrom(flags)?.let { updateState(pkg, it) }; ActionResult(action, verdict, cmd, output, raw, snapshotId)
     }
+
+    /** Steps needed to return the device to [id]. Protected packages are never planned. */
+    suspend fun planRestore(id: String): List<SnapshotStep>? = withContext(Dispatchers.IO) {
+        val snapshot = snapshotStore.get(id) ?: return@withContext null
+        val current = currentEntries() ?: return@withContext null
+        val byPkg = current.associateBy { it.pkg }
+        planSnapshotRestore(snapshot, current) { pkg -> byPkg[pkg]?.protectedReason != null }
+    }
+
+    /** Undo: saves a safety snapshot, then applies each step one package at a time with read-back. */
+    suspend fun restoreSnapshot(id: String): RestoreReport = withContext(Dispatchers.IO) {
+        val steps = planRestore(id) ?: return@withContext RestoreReport(0, emptyList(), null)
+        if (steps.isEmpty()) return@withContext RestoreReport(0, emptyList(), null)
+        val safety = captureSnapshot("Before undo")
+        val results = steps.map { runStep(it) }
+        RestoreReport(steps.size, results, safety)
+    }
+
+    private suspend fun runStep(step: SnapshotStep): RestoreStepResult {
+        val action = actionFor(step.operation)
+        if (entryFor(step.pkg)?.protectedReason != null) return RestoreStepResult(step.pkg, step.operation, Verdict.REFUSED, "protected")
+        val cmd = runCatching { AppActions.command(action, step.pkg) }.getOrNull() ?: return RestoreStepResult(step.pkg, step.operation, Verdict.REFUSED, "invalid package name")
+        val output = when (val o = bridge.execBlocking(cmd, TIMEOUT_MS)) {
+            is ExecOutcome.Failed -> return RestoreStepResult(step.pkg, step.operation, Verdict.FAILED, o.message)
+            is ExecOutcome.Completed -> (o.result.stdout + "\n" + o.result.stderr).trim()
+        }
+        val flags = (details(step.pkg) as? DetailsResult.Ok)?.details?.userFlags ?: emptyMap()
+        return RestoreStepResult(step.pkg, step.operation, AppActions.verify(action, flags, output), output)
+    }
+
+    private suspend fun currentEntries(): List<AppEntry>? = (cached as? InventoryResult.Ok)?.entries ?: (load() as? InventoryResult.Ok)?.entries
 
     private fun captureSnapshot(name: String): String? {
         val current = (cached as? InventoryResult.Ok)?.entries ?: return null

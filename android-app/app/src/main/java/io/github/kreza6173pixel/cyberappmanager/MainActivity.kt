@@ -65,7 +65,7 @@ private fun AppRoot(runtime: ShizukuRuntime, bridge: ExecBridge, inventory: Inve
             Screen.CONSOLE -> ConsoleScreen(bridge, contentModifier)
             Screen.APPS -> AppsScreen(inventory, connected, contentModifier) { pkg -> selectedPkg = pkg; screen = Screen.APP_DETAIL }
             Screen.APP_DETAIL -> AppDetailScreen(selectedPkg, inventory, connected, contentModifier)
-            Screen.SNAPSHOTS -> SnapshotsScreen(inventory, contentModifier)
+            Screen.SNAPSHOTS -> SnapshotsScreen(inventory, connected, contentModifier)
         }
     }
 }
