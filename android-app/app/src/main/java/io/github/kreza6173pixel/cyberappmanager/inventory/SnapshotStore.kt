@@ -2,12 +2,17 @@ package io.github.kreza6173pixel.cyberappmanager.inventory
 
 import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
 import android.provider.MediaStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-/** Durable storage in public Downloads/VOID APPS so uninstalling VOID does not erase recovery data. */
+/**
+ * Durable snapshot storage in public Downloads/VOID APPS. After a reinstall Android scoped storage
+ * may hide the old file from the new install, so import/export through the system file picker is
+ * the supported recovery path.
+ */
 class SnapshotStore(context: Context) {
     private val resolver = context.applicationContext.contentResolver
     private val legacyFile = File(context.applicationContext.filesDir, "snapshots.json")
@@ -24,64 +29,82 @@ class SnapshotStore(context: Context) {
         write(next); return true
     }
 
-    private fun read(): List<Snapshot> = runCatching {
-        val texts = mediaUris("snapshots").mapNotNull { uri -> runCatching { resolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } }.getOrNull() }
-        val all = if (texts.isNotEmpty()) texts else listOfNotNull(legacyFile.takeIf { it.exists() }?.readText())
+    /** Full JSON of every stored snapshot, newest first. */
+    @Synchronized fun exportJson(): String = snapshotsToJson(read().sortedByDescending { it.createdAtMs })
+
+    /** Merges snapshots from [text] by id. Returns how many were read, or -1 when the text is not snapshot JSON. */
+    @Synchronized fun importJson(text: String): Int {
+        val incoming = parseSnapshots(text) ?: return -1
+        if (incoming.isEmpty()) return 0
         val byId = LinkedHashMap<String, Snapshot>()
-        all.forEach { text ->
-            runCatching {
-                val array = JSONArray(text)
-                for (i in 0 until array.length()) snapshotFrom(array.getJSONObject(i)).also { byId[it.id] = it }
-            }
-        }
-        byId.values.toList()
-    }.getOrElse { emptyList() }
+        read().forEach { byId[it.id] = it }
+        incoming.forEach { byId[it.id] = it }
+        write(byId.values.sortedByDescending { it.createdAtMs }.take(MAX_SNAPSHOTS))
+        return incoming.size
+    }
+
+    private fun read(): List<Snapshot> {
+        val texts = mediaUris().mapNotNull { uri -> runCatching { resolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } }.getOrNull() }
+        val all = if (texts.isNotEmpty()) texts else listOfNotNull(runCatching { legacyFile.takeIf { it.exists() }?.readText() }.getOrNull())
+        val byId = LinkedHashMap<String, Snapshot>()
+        all.forEach { text -> parseSnapshots(text)?.forEach { byId[it.id] = it } }
+        return byId.values.toList()
+    }
 
     private fun write(snapshots: List<Snapshot>) {
-        val array = JSONArray()
-        snapshots.forEach { snapshot ->
-            array.put(JSONObject().apply {
-                put("id", snapshot.id); put("name", snapshot.name); put("createdAtMs", snapshot.createdAtMs)
-                put("entries", JSONArray().apply { snapshot.entries.forEach { entry -> put(JSONObject().apply { put("pkg", entry.pkg); put("isSystem", entry.isSystem); put("state", entry.state.name) }) } })
-            })
-        }
-        writeCanonical(FILE_NAME, array.toString(), "snapshots")
-    }
-
-    private fun snapshotFrom(json: JSONObject): Snapshot {
-        val entries = json.optJSONArray("entries") ?: JSONArray()
-        return Snapshot(json.getString("id"), json.optString("name", "Snapshot"), json.optLong("createdAtMs", 0L), buildList(entries.length()) {
-            for (i in 0 until entries.length()) {
-                val item = entries.getJSONObject(i)
-                val state = runCatching { AppState.valueOf(item.getString("state")) }.getOrNull() ?: continue
-                val pkg = item.optString("pkg")
-                if (isValidPackageName(pkg)) add(SnapshotEntry(pkg, item.optBoolean("isSystem"), state))
-            }
-        }.sortedBy { it.pkg })
-    }
-
-    private fun writeCanonical(name: String, text: String, prefix: String) {
+        val text = snapshotsToJson(snapshots)
         runCatching {
-            val files = mediaUris(prefix)
-            val uri = files.firstOrNull { displayName(it) == name } ?: resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, name); put(MediaStore.MediaColumns.MIME_TYPE, "application/json"); put(MediaStore.MediaColumns.RELATIVE_PATH, DIRECTORY)
+            val files = mediaUris()
+            val uri = files.firstOrNull { displayName(it) == FILE_NAME } ?: files.firstOrNull() ?: resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, FILE_NAME); put(MediaStore.MediaColumns.MIME_TYPE, "application/json"); put(MediaStore.MediaColumns.RELATIVE_PATH, DIRECTORY)
             }) ?: error("could not create persistent storage")
             resolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { it.write(text) } ?: error("could not open persistent storage")
             files.filter { it != uri }.forEach { runCatching { resolver.delete(it, null, null) } }
         }.onFailure { legacyFile.writeText(text) }
     }
 
-    private fun mediaUris(prefix: String): List<android.net.Uri> = runCatching {
+    private fun mediaUris(): List<Uri> = runCatching {
         val base = MediaStore.Files.getContentUri("external")
         resolver.query(base, arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME), "${MediaStore.MediaColumns.RELATIVE_PATH}=?", arrayOf(DIRECTORY), null)?.use { c ->
-            val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val name = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME); buildList {
-                while (c.moveToNext()) if (c.getString(name).startsWith(prefix) && c.getString(name).endsWith(".json")) add(MediaStore.Files.getContentUri("external", c.getLong(id)))
-            }
+            val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val name = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+            buildList { while (c.moveToNext()) { val n = c.getString(name) ?: continue; if (n.startsWith(PREFIX) && n.endsWith(".json")) add(MediaStore.Files.getContentUri("external", c.getLong(id))) } }
         } ?: emptyList()
     }.getOrElse { emptyList() }
 
-    private fun displayName(uri: android.net.Uri): String? = runCatching { resolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } }.getOrNull()
-    private companion object { const val DIRECTORY = "Download/VOID APPS/"; const val FILE_NAME = "snapshots.json"; const val MAX_SNAPSHOTS = 50 }
+    private fun displayName(uri: Uri): String? = runCatching { resolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } }.getOrNull()
+    private companion object { const val DIRECTORY = "Download/VOID APPS/"; const val FILE_NAME = "snapshots.json"; const val PREFIX = "snapshots"; const val MAX_SNAPSHOTS = 50 }
+}
+
+/** Parses a snapshot array or a single snapshot object. Returns null when [text] is not JSON. Invalid entries are skipped. */
+fun parseSnapshots(text: String): List<Snapshot>? = runCatching {
+    val trimmed = text.trim()
+    val objects = if (trimmed.startsWith("[")) JSONArray(trimmed).let { a -> List(a.length()) { a.getJSONObject(it) } } else listOf(JSONObject(trimmed))
+    objects.mapNotNull { runCatching { snapshotFromJson(it) }.getOrNull() }
+}.getOrNull()
+
+private fun snapshotFromJson(json: JSONObject): Snapshot {
+    val entries = json.optJSONArray("entries") ?: JSONArray()
+    val id = json.getString("id")
+    require(id.isNotBlank()) { "blank id" }
+    return Snapshot(id, json.optString("name", "Snapshot"), json.optLong("createdAtMs", 0L), buildList(entries.length()) {
+        for (i in 0 until entries.length()) {
+            val item = entries.optJSONObject(i) ?: continue
+            val state = runCatching { AppState.valueOf(item.getString("state")) }.getOrNull() ?: continue
+            val pkg = item.optString("pkg")
+            if (isValidPackageName(pkg)) add(SnapshotEntry(pkg, item.optBoolean("isSystem"), state))
+        }
+    }.sortedBy { it.pkg })
+}
+
+private fun snapshotsToJson(snapshots: List<Snapshot>): String {
+    val array = JSONArray()
+    snapshots.forEach { snapshot ->
+        array.put(JSONObject().apply {
+            put("id", snapshot.id); put("name", snapshot.name); put("createdAtMs", snapshot.createdAtMs)
+            put("entries", JSONArray().apply { snapshot.entries.forEach { entry -> put(JSONObject().apply { put("pkg", entry.pkg); put("isSystem", entry.isSystem); put("state", entry.state.name) }) } })
+        })
+    }
+    return array.toString()
 }
 
 /** Durable user pins in the same uninstall-safe public directory. */
@@ -99,11 +122,13 @@ class PinStore(context: Context) {
         val uri = mediaUri() ?: resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, FILE_NAME); put(MediaStore.MediaColumns.MIME_TYPE, "application/json"); put(MediaStore.MediaColumns.RELATIVE_PATH, DIRECTORY) }) ?: error("could not create persistent storage")
         resolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { it.write(text) } ?: error("could not open persistent storage")
     }.onFailure { legacyFile.writeText(text) } }
-    private fun mediaUri(): android.net.Uri? = runCatching {
+    private fun mediaUri(): Uri? = runCatching {
         val base = MediaStore.Files.getContentUri("external")
         resolver.query(base, arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME), "${MediaStore.MediaColumns.RELATIVE_PATH}=?", arrayOf(DIRECTORY), null)?.use { c ->
             val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID); val name = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
-            while (c.moveToNext()) if (c.getString(name) == FILE_NAME) return@use MediaStore.Files.getContentUri("external", c.getLong(id)); null
+            var found: Uri? = null
+            while (found == null && c.moveToNext()) if (c.getString(name) == FILE_NAME) found = MediaStore.Files.getContentUri("external", c.getLong(id))
+            found
         }
     }.getOrNull()
     private companion object { const val DIRECTORY = "Download/VOID APPS/"; const val FILE_NAME = "pins.json" }

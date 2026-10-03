@@ -29,6 +29,8 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
     fun entryFor(pkg: String): AppEntry? = (cached as? InventoryResult.Ok)?.entries?.firstOrNull { it.pkg == pkg }
     fun snapshots(): List<Snapshot> = snapshotStore.list()
     fun deleteSnapshot(id: String): Boolean = snapshotStore.delete(id)
+    fun exportSnapshots(): String = snapshotStore.exportJson()
+    fun importSnapshots(text: String): Int = snapshotStore.importJson(text)
     fun pins(): Set<String> = pinStore.list()
     fun setPinned(pkg: String, pinned: Boolean): Set<String> = pinStore.set(pkg, pinned)
 
