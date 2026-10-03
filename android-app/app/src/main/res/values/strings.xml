@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Cyber App Manager</string>
+    <string name="app_name">VOID // APPS</string>
 
     <string name="state_not_installed_title">Shizuku not installed</string>
     <string name="state_not_installed_body">The Shizuku manager app is not on this device. Install it first, then come back here.</string>
@@ -8,7 +8,7 @@
     <string name="state_not_running_body">The Shizuku manager is installed but its service is stopped. Open it and start Shizuku (via wireless debugging or ADB), then return.</string>
     <string name="state_permission_needed_title">Permission needed</string>
     <string name="state_permission_needed_body">Shizuku is running. This app still needs permission to use it. Tap Grant permission and accept the dialog inside Shizuku.</string>
-    <string name="state_rationale_hint">Shizuku reports that you declined the last request. Open Shizuku and enable Cyber App Manager in its permission list.</string>
+    <string name="state_rationale_hint">Shizuku reports that you declined the last request. Open Shizuku and enable VOID // APPS in its permission list.</string>
     <string name="state_restart_hint">Already allowed in Shizuku but still asked here? Some Shizuku builds apply a new permission only after the app restarts.</string>
     <string name="state_granted_not_applied">Shizuku granted the permission, but it applies only after a restart of this app.</string>
     <string name="state_ready_title">Shizuku ready</string>
@@ -31,7 +31,7 @@
 
     <string name="home_open_console">Open console</string>
 
-    <string name="console_title">CYBER // CONSOLE</string>
+    <string name="console_title">VOID // CONSOLE</string>
     <string name="console_command_label">Shell command</string>
     <string name="console_run">Run</string>
     <string name="console_cancel">Cancel</string>

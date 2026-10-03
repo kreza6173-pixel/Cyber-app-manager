@@ -11,11 +11,13 @@ val releaseKeystorePath: String? = System.getenv("PULSE_KEYSTORE_PATH")
     ?.takeIf { it.isNotBlank() && file(it).exists() }
 
 android {
+    // The Kotlin/AIDL package stays `cyberappmanager` (history of this repo); only the
+    // installed application id is the new product name. They are allowed to differ.
     namespace = "io.github.kreza6173pixel.cyberappmanager"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "io.github.kreza6173pixel.cyberappmanager"
+        applicationId = "io.github.kreza6173pixel.voidapps"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -59,8 +61,8 @@ android {
         aidl = true
     }
 
-    // The encrypted dependency block is readable only by Google. F-Droid and IzzyOnDroid
-    // ask for it to be removed, and nothing in this app needs it.
+    // The encrypted dependency block is readable only by Google. F-Droid asks for it to be
+    // removed, and nothing in this app needs it.
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
