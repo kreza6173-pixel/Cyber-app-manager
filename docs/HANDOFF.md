@@ -50,28 +50,32 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 - Unit tests cover granted/denied parsing, unknown sections, and empty output.
 - Next A4 push will expose this audit in app details, then add guarded grant/revoke and AppOps auditing.
 
-## 6. Problems found and fixes
+## 6. Installer scope decision
+
+The planned installer supports **APK, APKS and XAPK** only. APKM is explicitly out of scope and must not be added to the implementation or release claims. The installer phase remains A8 and includes session install, OBB placement where applicable, archive extraction, cache trimming, and safe shared-storage cleanup.
+
+## 7. Problems found and fixes
 
 - Stale A2 test and a later clarified rule that system apps keep Suspend: tests aligned with the requested contract.
 - Wrong `SelectionContainer` import: fixed to `androidx.compose.foundation.text.selection.SelectionContainer`.
 - Invalid `emptyList().let` in InventoryRepository: replaced with explicit typed construction.
-- MediaStore duplicate files: fixed with `moveToFirst` + do/while; reads merge every matching file and writes one canonical file.
+- MediaStore duplicate files: fixed with `moveToFirst` + do/while; reads merge every matching file and write one canonical file.
 - Stale cached state after reinstall: details now update repository state before actions rebuild.
 - App-private storage is wiped on uninstall, so public storage plus explicit Import/Export is the recovery path.
 - Repeated identical snapshots: deduplicated by name, state and a short window.
 - Protected package batch checkbox: replaced by an empty slot.
 - Some OEM system packages cannot be removed under Shizuku shell on the reference ROM: reported as failed/unsupported. Root and Dhizuku remain out of scope.
 
-## 7. Remaining work, in order
+## 8. Remaining work, in order
 
 1. Finish A4: details permission audit, guarded runtime grant/revoke, AppOps special-access audit and honest unsupported results.
 2. A5 boot receivers, component control, background AppOps.
 3. A6 notification listener, DND access, per-app notification mute.
 4. A7 Chain3 per-app network block and netpolicy background data.
-5. A8 APK/APKS/XAPK/APKM session install, OBB placement, extraction, cache trimming, safe shared-storage cleanup.
+5. A8 installer for APK, APKS and XAPK, OBB placement, extraction, cache trimming, safe shared-storage cleanup. APKM stays out of scope.
 6. 1.0: rewrite README (still describes the legacy WebUI), About, icon, fastlane, release notes, signed release from CI secrets, final smoke test, merge to `main`.
 
-## 8. Commit trail
+## 9. Commit trail
 
 - `3ad1a13` through `a9d19f0`: native foundation, A1-A3, Debloat, cross-manager restore, and Debloat UI fixes.
 - current push: A4 permission parser and unit tests; roadmap updated.

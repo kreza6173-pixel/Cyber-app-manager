@@ -26,7 +26,7 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 - A5 boot receivers, component control, background AppOps.
 - A6 notification listener, DND access, per-app notification mute.
 - A7 Chain3 per-app network block, netpolicy background data.
-- A8 session install for APK/APKS/XAPK/APKM, OBB placement, extraction, cache trimming, safe shared-storage cleanup.
+- A8 session install for APK, APKS and XAPK, OBB placement, extraction, cache trimming, safe shared-storage cleanup.
 - 1.0: README rewrite, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
 
 ## Gates
