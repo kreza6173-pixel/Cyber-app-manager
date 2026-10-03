@@ -28,7 +28,7 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 | A2 single-package operations | done | Suspend/Unsuspend user and system apps; protected apps show no actions. Suspend and Remove-for-user re-tested 2026-10-04 on a system and a user app |
 | A3 snapshots, undo, pins, batch | done | phone-verified |
 | Debloat track | done | CI green and owner phone acceptance, including search and cross-manager restore |
-| A4 permissions + AppOps | **in progress** | Permission audit and Grant/Revoke phone-verified on Drive, Meet, Play Store. AppOps card, OEM ops, uid/package scope split phone-verified on Drive. Shared-uid runtime permissions (MIUI) implemented, awaiting CI and phone test. AppOps writes remain |
+| A4 permissions + AppOps | **in progress** | Permission audit and Grant/Revoke phone-verified (Drive, Meet, Play Store). Shared-uid permissions phone-verified (securitycenter). AppOps audit and scope split phone-verified (Drive uid 10176, securitycenter uid 1000). Guarded AppOps change implemented, awaiting CI and phone test |
 | A5 to A8 | open | |
 | 1.0 release | open | |
 
@@ -46,40 +46,43 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 - A4 Grant/Revoke: `POST_NOTIFICATIONS` grant and revoke both returned APPLIED with matching before/after read-back. The target app stopped after revoke, matching Android process enforcement behavior.
 - A4 large apps (`9055b5a`): Drive, Meet and Play Store permission lists load. Camera and location were revoked in VOID, the app asked for them again on launch, then granted again in VOID and the grant took effect inside the app.
 - A2 re-test (2026-10-04): Suspend and Remove-for-user succeeded again on a system app and a user app.
-- A4 AppOps audit card on Drive `com.google.android.apps.docs` (system): card rendered below Permissions, op/mode list matched the raw output, raw toggle worked, nothing changed.
-- A4 AppOps follow-up (`c08a508`): `miuiop(10008) · allow · OEM · read-only` and `access_restricted_settings · default (also reported: allow)` shown on Drive.
-- A4 AppOps scopes (`3964931`): Drive shows `access_restricted_settings · uid: allow · package: default`, `camera · uid: foreground`, `wake_lock · package: allow`, `miuiop(10008) · package: allow · OEM · read-only`.
+- A4 AppOps audit card on Drive: card rendered below Permissions, op/mode list matched the raw output, raw toggle worked, nothing changed.
+- A4 AppOps OEM and duplicates (`c08a508`): `miuiop(10008) · allow · OEM · read-only` on Drive.
+- A4 AppOps scopes (`3964931`): Drive `access_restricted_settings · uid: allow · package: default`, `camera · uid: foreground`. Securitycenter (uid 1000): `receive_sms · uid: ignore · package: allow`, `system_alert_window · uid: ignore · package: default`, `miuiop(10033)`, `miuiop(10044)`, `miuiop(10053)` OEM read-only.
+- A4 shared uid (`0d4cd24`): securitycenter shows the red note `Shared system uid android.uid.system (1000)`, dangerous permissions such as `ACCESS_COARSE_LOCATION` and `ACCESS_BACKGROUND_LOCATION` as `granted · runtime · fixed`, no Grant/Revoke buttons. `sed -n '/^Shared users:/,/^[A-Z]/p' | wc -c` = 37361 bytes. Drive unchanged.
 
 ## 5. Current checkpoint and remaining path
 
-Phone findings used by the latest pushes:
+Latest code push `dc3ec81`: guarded AppOps change.
 
-- Drive: full `dumpsys package` = 128886 bytes (above the 64 KiB cap). Packages 1585, Hidden system packages 1774, Queries 1904. `sed -n '/^Packages:/,$p' | wc -c` = 35719.
-- Drive uid 10176: `appops get 10176` prints only the uid block, exactly the first block of `appops get <pkg>`. `appops get --uid <pkg>` does not separate scopes on this ROM.
-- `com.miui.securitycenter` layout: Activity Resolver Table 1 ... Permissions 1074..1373 (44 blocks), Registered ContentProviders 1380, ContentProvider Authorities 1456, Key Set Manager 1569, **Packages 1573**, Hidden system packages 2319, Queries 3036, **Shared users 3501**, Dexopt state 4049, Compiler stats 4057.
-- securitycenter is in shared user `android.uid.system/1000` (`sharedUser=SharedUserSetting{cfee48 android.uid.system/1000}` at 1576). `ACCESS_COARSE_LOCATION` appears as requested at 1742, but `runtime permissions:` exists only at 4021, inside Shared users: `ACCESS_COARSE_LOCATION: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]`. VOID read only Packages:, so it showed `unknown`. Another app manager shows it `dangerous|granted` and its revoke fails.
+- Change button per standard op, only when uid and package scopes were split and the app is not protected. OEM ops never get a button.
+- Dialog: scope (Package, or Uid; Uid disabled for system uids < 10000) and mode (allow, ignore, deny, foreground, default).
+- Commands: package scope `appops set <pkg> <OP> <mode>`, uid scope `appops set <uid> <OP> <mode>` (numeric uid, same form as the probed `appops get <uid>`). Op names are sent uppercase because Android prints them uppercase. The uid form of `set` has not been probed yet; read-back decides.
+- Read-back: fresh scoped audit; an op missing from a scope counts as default. APPLIED only on match, UNVERIFIABLE when the read-back cannot be split.
+- AppOps changes are not part of snapshots; the result card shows the previous mode for manual reversal.
 
-Latest push reads `Shared users:` for shared-uid packages (second call, non-fatal) and refuses Grant/Revoke for shared system uids. Phone test (owner):
+Phone test (owner), on a normal user app first, then Drive:
 
-1. `com.miui.securitycenter`: dangerous permissions show `granted · runtime · fixed`, a red note `Shared system uid android.uid.system (1000)`, and no Grant/Revoke buttons.
-2. Size check: `dumpsys package com.miui.securitycenter | sed -n '/^Shared users:/,/^[A-Z]/p' | wc -c` (must be under 65536; if not, the app silently keeps the Packages-only view).
-3. Drive, Meet, Play Store still behave as before (no shared user there).
+1. Package scope: pick an op that is listed in package scope (for example `wake_lock · package: allow`), change it to `ignore`, expect APPLIED and `package: ignore`; change it back to `allow`, expect APPLIED.
+2. Uid scope on a user app: change a uid-scope op (for example `camera`) and back; expect APPLIED both times, or an honest NOT_APPLIED with the command output.
+3. securitycenter: Uid option is disabled; package scope works or is honestly reported.
+4. OEM ops (`miuiop(...)`) have no Change button.
 
 After the test:
 
-1. Guarded AppOps set/reset with scope (`appops set --uid` for uid scope, `appops set` for package scope), valid-name and valid-mode checks, protected-app and OEM refusal, refusal of uid scope on shared system uids, confirmation, and read-back.
-2. Read-only Self-check over all packages.
-3. Close A4 and move to A5: boot receivers, component control, and background AppOps.
-4. Continue A6 notifications/DND, A7 network controls, A8 APK/APKS/XAPK installer, then 1.0 release work.
+1. Read-only Self-check over all packages (permission audit, AppOps parse and split, size-cap hits, unknown lines).
+2. Close A4 and move to A5: boot receivers, component control, and background AppOps.
+3. Continue A6 notifications/DND, A7 network controls, A8 APK/APKS/XAPK installer, then 1.0 release work.
 
 ## 6. Design and safety decisions
 
 - AppOps is not the same thing as a runtime permission. Both are shown as separate sections.
 - AppOps audit keeps the raw output of every command visible so ROM-specific formats are checked against reality, not guessed.
-- AppOps scopes: `appops get <uid>` is the uid scope; the rest of `appops get <package>` after that exact prefix is the package scope. If the prefix does not match line by line, the merged view with all reported modes is shown.
-- OEM AppOps (for example `MIUIOP(n)`) are shown but never changeable; `isValidAppOp` rejects them so no set/reset command can target them.
-- Permission audit reads only the active `Packages:` block of `dumpsys package` and stops at the next top-level header, so the hidden factory package of an updated system app cannot overwrite runtime flags. Lines reach the parser unchanged.
-- Shared-uid packages: runtime permissions are read from `Shared users:`. They belong to the whole uid, so Grant/Revoke is refused for system-range shared uids (< 10000, for example android.uid.system) and warned for app-range shared uids.
+- AppOps scopes: `appops get <uid>` is the uid scope; the rest of `appops get <package>` after that exact prefix is the package scope. If the prefix does not match line by line, the merged view with all reported modes is shown and changes are disabled.
+- AppOps changes: one op, one scope at a time, confirmation dialog, read-back. Uid scope is refused for system uids (< 10000) because it would apply to every package in the uid.
+- OEM AppOps (for example `MIUIOP(n)`) are shown but never changeable; `isValidAppOp` rejects them so no set command can target them.
+- Permission audit reads only the active `Packages:` block of `dumpsys package` and stops at the next top-level header, so the hidden factory package of an updated system app cannot overwrite runtime flags.
+- Shared-uid packages: runtime permissions are read from `Shared users:`. They belong to the whole uid, so Grant/Revoke is refused for system-range shared uids and warned for app-range shared uids.
 - Owner decision (2026-10-04): `com.miui.securitycenter` stays unprotected. The platform already fixes its dangerous permissions (SYSTEM_FIXED), and the owner wants users to keep the other options.
 - Protected packages remain read-only even when Android exposes operations.
 - No change is reported APPLIED without read-back from Android.
@@ -91,15 +94,10 @@ After the test:
 - CI run #46 red: A4 UI and strings were split across commits; #47 fixed it. Code/resources now land together.
 - First A4 audit grep dropped the runtime header; replaced by section-aware parsing.
 - Runtime audit initially showed stale state; fixed with full dumpsys plus authoritative `pm check-permission` read-back.
-- AppOps parser, CI #53 to #55 (verified from the CI logs):
-  - #53 failed `parsesCommonAppOpsOutput` (AppOpsTest.kt:16): the regex was anchored with `matchEntire`, so `Uid mode: COARSE_LOCATION: foreground` (space inside the prefix) never matched.
-  - #54 removed the start anchor. That fixed test 1 but broke `ignoresUnsupportedModesAndInvalidNames` (AppOpsTest.kt:27): `bad-name: deny` matched mid-line as op `name`, giving 2 operations instead of 1.
-  - #55 switched to `findAll().lastOrNull()`, which produces identical results on these inputs, so it stayed red on line 27. The earlier note blaming the prefixed-line case for #55 was wrong.
-  - Fix (`e587840`, CI #56 green): keep the start anchored and allow only an optional word prefix: `^(?:[A-Za-z ]+:\s*)?op:\s*mode(;detail)?$`.
-- Disable confirmation dialog showed the Suspend warning text (`actionWarning` mapped FREEZE to `warn_suspend`); now uses `warn_freeze`.
-- Full `dumpsys package` for large apps exceeds the 64 KiB cap (Drive: 128886 bytes). First fix (`c08a508`, `grep -nE` on permission-shaped lines) was pushed without measuring and was still truncated on the phone. Second fix (`9055b5a`) reads only the `Packages:` block, measured first; phone-verified on Drive, Meet, Play Store.
-- Shared-uid apps (securitycenter) showed runtime permissions as `unknown` because they live in `Shared users:`; now read from there.
-- Permission card error now shows the exact error text with copy/share.
+- AppOps parser, CI #53 to #55 (verified from the CI logs): #53 failed `parsesCommonAppOpsOutput` (anchored `matchEntire` rejected the `Uid mode:` prefix); #54 removed the anchor and broke `ignoresUnsupportedModesAndInvalidNames` (`bad-name: deny` matched as `name`); #55 used `findAll().lastOrNull()`, identical results, still red. Fix `e587840` (CI #56 green): anchored start with an optional word prefix.
+- Disable confirmation dialog showed the Suspend warning text; now uses `warn_freeze`.
+- Full `dumpsys package` for large apps exceeds the 64 KiB cap (Drive: 128886 bytes). `c08a508` (grep filter) was pushed without measuring and was still truncated. `9055b5a` reads only the `Packages:` block, measured first.
+- Shared-uid apps (securitycenter) showed runtime permissions as `unknown` because they live in `Shared users:`; fixed in `0d4cd24`.
 - Parser dropped OEM ops with a numeric suffix (`MIUIOP(10008)`); now parsed as read-only OEM records.
 - Android 16 prints some ops twice (uid scope, then package scope); now split by scope using `appops get <uid>`.
 - Android may stop the target process during permission changes; UI warns before Grant/Revoke.
@@ -107,14 +105,13 @@ After the test:
 
 ## 8. Remaining work, in order
 
-1. Confirm the latest push is green, then phone test (section 5) on securitycenter, including the size check.
-2. Guarded AppOps set/reset with scope and read-back, Drive phone test.
-3. Read-only Self-check over all packages.
-4. A5 boot receivers, component control, background AppOps.
-5. A6 notification listener, DND access, per-app notification mute.
-6. A7 Chain3 per-app network block and netpolicy background data.
-7. A8 installer for APK, APKS and XAPK, OBB placement, extraction, cache trimming, safe shared-storage cleanup. APKM stays out of scope.
-8. 1.0: README including disclaimers, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
+1. Confirm `dc3ec81` is green, then phone test the AppOps change (section 5).
+2. Read-only Self-check over all packages.
+3. A5 boot receivers, component control, background AppOps.
+4. A6 notification listener, DND access, per-app notification mute.
+5. A7 Chain3 per-app network block and netpolicy background data.
+6. A8 installer for APK, APKS and XAPK, OBB placement, extraction, cache trimming, safe shared-storage cleanup. APKM stays out of scope.
+7. 1.0: README including disclaimers, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
 
 ## 9. Commit trail
 
@@ -124,9 +121,10 @@ After the test:
 - `1ea2245`: runtime parsing and Grant/Revoke.
 - `ec27559`, `49a285e`: authoritative runtime read-back.
 - `a85692c`, `822fac8`, `cb24d9e`: AppOps parser foundation and two unsuccessful parser fixes (CI #53 to #55 red).
-- `e587840`: anchored AppOps parser with optional word prefix (CI #56 green).
-- `8a6ec66`: read-only AppOps audit card, raw output toggle, header test, Disable warning fix (phone-verified on Drive).
-- `c08a508`: OEM AppOps and duplicate modes (phone-verified), exact permission error text; its grep permission filter was still truncated on Drive.
-- `9055b5a`: permission audit reads only the active `Packages:` block (phone-verified on Drive, Meet, Play Store).
-- `3964931`: AppOps uid/package scope split (phone-verified on Drive).
-- current push: shared-uid runtime permissions from `Shared users:`, shared system uid write refusal.
+- `e587840`: anchored AppOps parser (CI #56 green).
+- `8a6ec66`: AppOps audit card, raw output, Disable warning fix.
+- `c08a508`: OEM AppOps and duplicate modes; its grep permission filter was still truncated.
+- `9055b5a`: permission audit reads only the active `Packages:` block.
+- `3964931`: AppOps uid/package scope split.
+- `0d4cd24`: shared-uid runtime permissions, shared system uid write refusal.
+- `dc3ec81`: guarded AppOps change with scope and read-back.
