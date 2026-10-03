@@ -31,6 +31,7 @@ import io.github.kreza6173pixel.cyberappmanager.shizuku.ShizukuState
 import io.github.kreza6173pixel.cyberappmanager.ui.apps.AppDetailScreen
 import io.github.kreza6173pixel.cyberappmanager.ui.apps.AppsScreen
 import io.github.kreza6173pixel.cyberappmanager.ui.console.ConsoleScreen
+import io.github.kreza6173pixel.cyberappmanager.ui.debloat.DebloatScreen
 import io.github.kreza6173pixel.cyberappmanager.ui.home.HomeScreen
 import io.github.kreza6173pixel.cyberappmanager.ui.pins.PinsScreen
 import io.github.kreza6173pixel.cyberappmanager.ui.snapshots.SnapshotsScreen
@@ -47,7 +48,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() { super.onResume(); runtime.refresh() }
 }
 
-private enum class Screen { HOME, CONSOLE, APPS, APP_DETAIL, SNAPSHOTS, PINS }
+private enum class Screen { HOME, CONSOLE, APPS, APP_DETAIL, SNAPSHOTS, PINS, DEBLOAT }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,15 +60,16 @@ private fun AppRoot(runtime: ShizukuRuntime, bridge: ExecBridge, inventory: Inve
     val connected = bridge.connectionState == ConnectionState.CONNECTED
     val shown = if (ready) screen else Screen.HOME
     BackHandler(enabled = shown != Screen.HOME) { screen = if (shown == Screen.APP_DETAIL) Screen.APPS else Screen.HOME }
-    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(when (shown) { Screen.HOME -> R.string.app_name; Screen.CONSOLE -> R.string.console_title; Screen.APPS -> R.string.apps_title; Screen.APP_DETAIL -> R.string.detail_title; Screen.SNAPSHOTS -> R.string.snapshots_title; Screen.PINS -> R.string.pins_title }), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp)) }) }) { innerPadding ->
+    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(when (shown) { Screen.HOME -> R.string.app_name; Screen.CONSOLE -> R.string.console_title; Screen.APPS -> R.string.apps_title; Screen.APP_DETAIL -> R.string.detail_title; Screen.SNAPSHOTS -> R.string.snapshots_title; Screen.PINS -> R.string.pins_title; Screen.DEBLOAT -> R.string.debloat_title }), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp)) }) }) { innerPadding ->
         val contentModifier = Modifier.fillMaxSize().padding(innerPadding)
         when (shown) {
-            Screen.HOME -> HomeScreen(runtime, contentModifier, { screen = Screen.APPS }, { screen = Screen.CONSOLE }, { screen = Screen.SNAPSHOTS }, { screen = Screen.PINS })
+            Screen.HOME -> HomeScreen(runtime, contentModifier, { screen = Screen.APPS }, { screen = Screen.CONSOLE }, { screen = Screen.SNAPSHOTS }, { screen = Screen.PINS }, { screen = Screen.DEBLOAT })
             Screen.CONSOLE -> ConsoleScreen(bridge, contentModifier)
             Screen.APPS -> AppsScreen(inventory, connected, contentModifier) { pkg -> selectedPkg = pkg; screen = Screen.APP_DETAIL }
             Screen.APP_DETAIL -> AppDetailScreen(selectedPkg, inventory, connected, contentModifier)
             Screen.SNAPSHOTS -> SnapshotsScreen(inventory, connected, contentModifier)
             Screen.PINS -> PinsScreen(inventory, contentModifier)
+            Screen.DEBLOAT -> DebloatScreen(inventory, connected, contentModifier)
         }
     }
 }
