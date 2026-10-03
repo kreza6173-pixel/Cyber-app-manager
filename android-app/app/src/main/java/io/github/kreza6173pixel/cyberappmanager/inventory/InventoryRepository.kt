@@ -12,9 +12,10 @@ import java.util.UUID
 sealed interface InventoryResult { data class Ok(val entries: List<AppEntry>, val counts: InventoryCounts) : InventoryResult; data class Error(val message: String) : InventoryResult }
 sealed interface DetailsResult { data class Ok(val details: PackageDetails, val raw: String) : DetailsResult; data class Error(val message: String) : DetailsResult }
 sealed interface PermissionAuditResult { data class Ok(val audit: PermissionAudit, val sharedUser: SharedUserInfo? = null) : PermissionAuditResult; data class Error(val message: String) : PermissionAuditResult }
-sealed interface AppOpsAuditResult { data class Ok(val audit: AppOpsAudit, val raw: String) : AppOpsAuditResult; data class Error(val message: String) : AppOpsAuditResult }
+sealed interface AppOpsAuditResult { data class Ok(val audit: AppOpsAudit, val raw: String, val uid: Int? = null) : AppOpsAuditResult; data class Error(val message: String) : AppOpsAuditResult }
 data class ActionResult(val action: AppAction, val verdict: Verdict, val command: String, val output: String, val readBack: String, val snapshotId: String? = null)
 data class PermissionChangeResult(val pkg: String, val permission: String, val grant: Boolean, val verdict: Verdict, val command: String, val output: String, val before: Boolean?, val after: Boolean?)
+data class AppOpChangeResult(val pkg: String, val op: String, val scope: AppOpScope, val mode: String, val verdict: Verdict, val command: String, val output: String, val before: String?, val after: String?)
 data class RestoreStepResult(val pkg: String, val operation: SnapshotOperation, val verdict: Verdict, val detail: String)
 data class RestoreReport(val planned: Int, val results: List<RestoreStepResult>, val safetySnapshotId: String?)
 data class BatchItemResult(val pkg: String, val verdict: Verdict, val detail: String)
@@ -88,7 +89,30 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
             append("$ appops get ").append(pkg).append('\n').append(full.trim())
             if (uid != null && uidText != null) append("\n\n$ appops get ").append(uid).append(" (uid)\n").append(uidText.trim())
         }
-        AppOpsAuditResult.Ok(audit, raw)
+        AppOpsAuditResult.Ok(audit, raw, uid)
+    }
+
+    /**
+     * Guarded AppOps change for one op in one scope, then read back with a fresh scoped audit.
+     * An op missing from a scope counts as default. APPLIED only when the read-back matches.
+     */
+    suspend fun setAppOp(pkg: String, op: String, scope: AppOpScope, mode: String): AppOpChangeResult = withContext(Dispatchers.IO) {
+        fun refused(reason: String, before: String? = null) = AppOpChangeResult(pkg, op, scope, mode, Verdict.REFUSED, "", reason, before, before)
+        if (!isValidPackageName(pkg) || !isValidAppOp(op) || !isValidAppOpMode(mode)) return@withContext refused("invalid package, operation or mode")
+        val e = entryFor(pkg) ?: return@withContext refused("inventory not loaded")
+        e.protectedReason?.let { return@withContext refused("protected: $it") }
+        val beforeResult = appOpsAudit(pkg) as? AppOpsAuditResult.Ok ?: return@withContext refused("AppOps state unavailable")
+        val uid = beforeResult.uid ?: return@withContext refused("uid unavailable")
+        if (!beforeResult.audit.scoped) return@withContext refused("uid and package scope could not be separated on this ROM")
+        if (scope == AppOpScope.UID && uid < 10000) return@withContext refused("system uid $uid: a uid-wide change would apply to every package in it")
+        val before = appOpModeIn(beforeResult.audit, op, scope)
+        if ((before ?: "default") == mode) return@withContext refused("already in the requested state", before)
+        val cmd = appOpSetCommand(scope, ShellQuoting.quote(pkg), uid, op, mode)
+        val output = when (val o = bridge.execBlocking(cmd, TIMEOUT_MS)) { is ExecOutcome.Failed -> return@withContext AppOpChangeResult(pkg, op, scope, mode, Verdict.FAILED, cmd, o.message, before, null); is ExecOutcome.Completed -> (o.result.stdout + "\n" + o.result.stderr).trim() + "\n(exit ${o.result.exitCode})" }
+        val afterAudit = (appOpsAudit(pkg) as? AppOpsAuditResult.Ok)?.audit
+        val after = afterAudit?.let { appOpModeIn(it, op, scope) }
+        val verdict = when { afterAudit == null || !afterAudit.scoped -> Verdict.UNVERIFIABLE; (after ?: "default") == mode -> Verdict.APPLIED; else -> Verdict.NOT_APPLIED }
+        AppOpChangeResult(pkg, op, scope, mode, verdict, cmd, output, before, after)
     }
 
     suspend fun setPermission(pkg: String, permission: String, grant: Boolean): PermissionChangeResult = withContext(Dispatchers.IO) {

@@ -17,10 +17,14 @@ data class AppOpRecord(
     val scoped: Boolean = false,
 ) {
     val changeable: Boolean get() = !oem && mode in CHANGEABLE_MODES
-    companion object { val CHANGEABLE_MODES = setOf("allow", "deny", "ignore", "foreground", "default") }
+    companion object { val CHANGEABLE_MODES = listOf("allow", "ignore", "deny", "foreground", "default") }
 }
 
-data class AppOpsAudit(val packageName: String, val operations: List<AppOpRecord>)
+/** [scoped] is true only when uid and package scopes were separated reliably; changes require it. */
+data class AppOpsAudit(val packageName: String, val operations: List<AppOpRecord>, val scoped: Boolean = false)
+
+/** Where an AppOps change is applied. UID affects every package in the uid. */
+enum class AppOpScope { PACKAGE, UID }
 
 /*
  * Android emits both `camera: allow` and prefixed lines such as `Uid mode: COARSE_LOCATION: foreground`.
@@ -77,7 +81,13 @@ fun parseAppOpsScoped(packageName: String, packageText: String, uidText: String)
         val main = p ?: u ?: return@mapNotNull null
         AppOpRecord(op, main.mode, main.detail, main.oem, emptyList(), u?.mode, p?.mode, true)
     }
-    return AppOpsAudit(packageName, records.sortedBy { it.op })
+    return AppOpsAudit(packageName, records.sortedBy { it.op }, scoped = true)
+}
+
+/** Mode of [op] in [scope], or null when Android did not list it there (which means default). */
+fun appOpModeIn(audit: AppOpsAudit, op: String, scope: AppOpScope): String? {
+    val record = audit.operations.firstOrNull { it.op == op } ?: return null
+    return if (scope == AppOpScope.UID) record.uidMode else record.packageMode
 }
 
 /** Exact uid from `pm list packages -U <filter>`; the filter is a substring match, so the name must be equal. */
@@ -91,3 +101,12 @@ fun isValidAppOp(name: String): Boolean = name.matches(Regex("^[a-z][a-z0-9_]*$"
 fun isValidAppOpMode(mode: String): Boolean = mode in AppOpRecord.CHANGEABLE_MODES
 fun appOpsSetCommand(pkg: String, op: String, mode: String): String = "appops set $pkg $op $mode"
 fun appOpsResetCommand(pkg: String, op: String): String = "appops set $pkg $op default"
+
+/**
+ * Command for a guarded change. Android matches op names case-sensitively against the uppercase names
+ * it prints, so the op is sent uppercase. Uid scope uses the numeric uid, the same form as `appops get <uid>`.
+ */
+fun appOpSetCommand(scope: AppOpScope, quotedPkg: String, uid: Int, op: String, mode: String): String {
+    val target = if (scope == AppOpScope.UID) uid.toString() else quotedPkg
+    return "appops set $target ${op.uppercase()} $mode"
+}

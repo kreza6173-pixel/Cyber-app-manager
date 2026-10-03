@@ -28,8 +28,10 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
     var busy by remember(pkg) { mutableStateOf(false) }
     var last by remember(pkg) { mutableStateOf<ActionResult?>(null) }
     var permResult by remember(pkg) { mutableStateOf<PermissionChangeResult?>(null) }
+    var appOpResult by remember(pkg) { mutableStateOf<AppOpChangeResult?>(null) }
     var confirm by remember(pkg) { mutableStateOf<AppAction?>(null) }
     var permConfirm by remember(pkg) { mutableStateOf<PermissionChange?>(null) }
+    var appOpChange by remember(pkg) { mutableStateOf<AppOpRecord?>(null) }
     var reload by remember(pkg) { mutableStateOf(0) }
     var pinned by remember(pkg) { mutableStateOf(pkg in repository.pins()) }
     LaunchedEffect(pkg, connected, reload) { if (connected) { details = repository.details(pkg); audit = repository.permissionAudit(pkg); appOps = repository.appOpsAudit(pkg); entry = repository.entryFor(pkg); pinned = pkg in repository.pins() } }
@@ -45,6 +47,12 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
         confirmButton = { TextButton({ val change = pendingPerm; permConfirm = null; busy = true; scope.launch { permResult = repository.setPermission(pkg, change.record.name, change.grant); busy = false; reload++ } }) { Text(stringResource(R.string.action_confirm)) } },
         dismissButton = { TextButton({ permConfirm = null }) { Text(stringResource(R.string.action_cancel)) } },
     )
+
+    val pendingOp = appOpChange
+    if (pendingOp != null) AppOpChangeDialog(pendingOp, (appOps as? AppOpsAuditResult.Ok)?.uid, onDismiss = { appOpChange = null }) { opScope, opMode ->
+        appOpChange = null; busy = true
+        scope.launch { appOpResult = repository.setAppOp(pkg, pendingOp.op, opScope, opMode); busy = false; reload++ }
+    }
 
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val e = entry
@@ -64,8 +72,10 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
         }
         last?.let { ResultCard(it) }
         permResult?.let { PermissionResultCard(it) }
-        PermissionAuditCard(audit, canChange = connected && !busy && e != null && e.protectedReason == null) { rec -> permConfirm = PermissionChange(rec, rec.granted != true) }
-        AppOpsAuditCard(appOps)
+        appOpResult?.let { AppOpResultCard(it) }
+        val canChange = connected && !busy && e != null && e.protectedReason == null
+        PermissionAuditCard(audit, canChange = canChange) { rec -> permConfirm = PermissionChange(rec, rec.granted != true) }
+        AppOpsAuditCard(appOps, canChange = canChange) { op -> appOpChange = op }
         when (val d = details) {
             null -> Text(stringResource(if (connected) R.string.apps_loading else R.string.apps_waiting))
             is DetailsResult.Error -> { Text(stringResource(R.string.detail_error), color = MaterialTheme.colorScheme.error); LtrMonoText(d.message); CopyShareButtons(d.message) }
@@ -113,8 +123,8 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
     }
 }
 
-/** AppOps are shown apart from manifest permissions. Read-only: no set/reset controls in this step. */
-@Composable private fun AppOpsAuditCard(result: AppOpsAuditResult?) {
+/** AppOps are shown apart from manifest permissions. Changes need a reliable uid/package split. */
+@Composable private fun AppOpsAuditCard(result: AppOpsAuditResult?, canChange: Boolean, onChange: (AppOpRecord) -> Unit) {
     var showRaw by remember(result) { mutableStateOf(false) }
     when (result) {
         null -> Text(stringResource(R.string.appops_loading), style = MaterialTheme.typography.titleSmall)
@@ -125,16 +135,63 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
         }
         is AppOpsAuditResult.Ok -> {
             val ops = result.audit.operations
+            val editable = canChange && result.audit.scoped && result.uid != null
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(stringResource(R.string.appops_title), style = MaterialTheme.typography.titleSmall)
                     if (ops.isEmpty()) Text(stringResource(R.string.appops_empty), style = MaterialTheme.typography.bodySmall)
-                    else SelectionContainer { Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { ops.forEach { op -> Text(appOpLabel(op), style = MaterialTheme.typography.bodySmall, color = appOpColor(op.mode)) } } }
+                    ops.forEach { op ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            SelectionContainer(Modifier.weight(1f)) { Text(appOpLabel(op), style = MaterialTheme.typography.bodySmall, color = appOpColor(op.mode)) }
+                            if (editable && op.changeable) TextButton({ onChange(op) }) { Text(stringResource(R.string.appop_change)) }
+                        }
+                    }
                     Text(stringResource(R.string.appops_read_only), style = MaterialTheme.typography.labelSmall)
                     TextButton({ showRaw = !showRaw }) { Text(stringResource(if (showRaw) R.string.appops_raw_hide else R.string.appops_raw_show)) }
                     if (showRaw) { LtrMonoText(result.raw); CopyShareButtons(result.raw) }
                 }
             }
+        }
+    }
+}
+
+/** Scope and mode picker. Uid scope is disabled for system uids; the repository refuses it as well. */
+@Composable private fun AppOpChangeDialog(op: AppOpRecord, uid: Int?, onDismiss: () -> Unit, onConfirm: (AppOpScope, String) -> Unit) {
+    val uidAllowed = uid != null && uid >= 10000
+    var opScope by remember(op) { mutableStateOf(AppOpScope.PACKAGE) }
+    var opMode by remember(op) { mutableStateOf(op.packageMode ?: "default") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.appop_change_title, op.op)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(stringResource(R.string.appop_scope_label), style = MaterialTheme.typography.labelMedium)
+                ChoiceRow(stringResource(R.string.appop_scope_package), opScope == AppOpScope.PACKAGE, true) { opScope = AppOpScope.PACKAGE; opMode = op.packageMode ?: "default" }
+                ChoiceRow(stringResource(if (uidAllowed) R.string.appop_scope_uid else R.string.appop_scope_uid_refused), opScope == AppOpScope.UID, uidAllowed) { opScope = AppOpScope.UID; opMode = op.uidMode ?: "default" }
+                Text(stringResource(R.string.appop_mode_label), style = MaterialTheme.typography.labelMedium)
+                AppOpRecord.CHANGEABLE_MODES.forEach { m -> ChoiceRow(m, opMode == m, true) { opMode = m } }
+                Text(stringResource(R.string.appop_change_note), style = MaterialTheme.typography.labelSmall)
+            }
+        },
+        confirmButton = { TextButton({ onConfirm(opScope, opMode) }) { Text(stringResource(R.string.action_confirm)) } },
+        dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
+}
+
+@Composable private fun ChoiceRow(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(selected = selected, onClick = onClick, enabled = enabled)
+        Text(label, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable private fun AppOpResultCard(r: AppOpChangeResult) {
+    val report = "$ ${r.command}\n${r.output}\n\nbefore: ${r.before ?: "default (not listed)"}\nafter: ${r.after ?: "default (not listed)"}"
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Text(stringResource(R.string.appop_result_format, r.op, r.scope.name.lowercase(), r.mode, stringResource(verdictRes(r.verdict))), color = if (r.verdict == Verdict.APPLIED) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+            LtrMonoText(report)
+            CopyShareButtons(report)
         }
     }
 }

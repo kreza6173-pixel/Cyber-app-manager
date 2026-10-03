@@ -58,6 +58,7 @@ class AppOpsTest {
         assertEquals("default", restricted.mode)
         assertEquals(listOf("allow"), restricted.alsoReported)
         assertFalse(isValidAppOp("miuiop(10008)"))
+        assertFalse(audit.scoped)
     }
 
     /** Shape measured on Drive: `appops get <uid>` is exactly the first block of `appops get <package>`. */
@@ -72,6 +73,7 @@ class AppOpsTest {
             MIUIOP(10053): ignore
         """.trimIndent()
         val audit = parseAppOpsScoped("com.google.android.apps.docs", full, uid)
+        assertTrue(audit.scoped)
         assertEquals(4, audit.operations.size)
         assertTrue(audit.operations.all { it.scoped })
         val restricted = audit.operations.first { it.op == "access_restricted_settings" }
@@ -84,8 +86,21 @@ class AppOpsTest {
         assertTrue(audit.operations.first { it.op == "miuiop(10053)" }.oem)
     }
 
+    /** Shape measured on com.miui.securitycenter (uid 1000): the same op in both scopes with different modes. */
+    @Test fun splitsSystemUidScopes() {
+        val uid = "Uid mode: RECEIVE_SMS: ignore\nSYSTEM_ALERT_WINDOW: ignore"
+        val full = uid + "\nRECEIVE_SMS: allow; time=+6h7m26s899ms ago\nSYSTEM_ALERT_WINDOW: default; time=+2h10m36s741ms ago; duration=+640ms\nSTART_FOREGROUND: allow; time=+2d3h8m27s68ms ago (running)"
+        val audit = parseAppOpsScoped("com.miui.securitycenter", full, uid)
+        assertEquals("ignore", appOpModeIn(audit, "receive_sms", AppOpScope.UID))
+        assertEquals("allow", appOpModeIn(audit, "receive_sms", AppOpScope.PACKAGE))
+        assertEquals("default", appOpModeIn(audit, "system_alert_window", AppOpScope.PACKAGE))
+        assertEquals("allow", appOpModeIn(audit, "start_foreground", AppOpScope.PACKAGE))
+        assertNull(appOpModeIn(audit, "start_foreground", AppOpScope.UID))
+    }
+
     @Test fun fallsBackToMergedWhenUidPrefixDoesNotMatch() {
         val audit = parseAppOpsScoped("pkg", "CAMERA: allow\nWAKE_LOCK: allow", "Uid mode: CAMERA: ignore")
+        assertFalse(audit.scoped)
         assertFalse(audit.operations.any { it.scoped })
         assertEquals(2, audit.operations.size)
     }
@@ -99,5 +114,10 @@ class AppOpsTest {
     @Test fun commandsUseExplicitMode() {
         assertEquals("appops set pkg camera allow", appOpsSetCommand("pkg", "camera", "allow"))
         assertEquals("appops set pkg camera default", appOpsResetCommand("pkg", "camera"))
+    }
+
+    @Test fun guardedSetCommandUsesUppercaseOpAndScopeTarget() {
+        assertEquals("appops set 'com.example.app' CAMERA ignore", appOpSetCommand(AppOpScope.PACKAGE, "'com.example.app'", 10176, "camera", "ignore"))
+        assertEquals("appops set 10176 CAMERA default", appOpSetCommand(AppOpScope.UID, "'com.example.app'", 10176, "camera", "default"))
     }
 }
