@@ -41,38 +41,32 @@ fun DebloatScreen(repository: InventoryRepository, connected: Boolean, modifier:
         return eligibleForBatch(entry, a) && KnowledgeBase.classify(pkg, entry.isSystem).risk == Risk.SAFE
     }
 
-    if (showDisclaimer) {
-        AlertDialog(
-            onDismissRequest = { showDisclaimer = false },
-            title = { Text(stringResource(R.string.debloat_disclaimer_title)) },
-            text = { Text(stringResource(R.string.debloat_disclaimer)) },
-            confirmButton = { TextButton(onClick = { showDisclaimer = false }) { Text(stringResource(R.string.action_close)) } },
-        )
-    }
+    if (showDisclaimer) AlertDialog(
+        onDismissRequest = { showDisclaimer = false },
+        title = { Text(stringResource(R.string.debloat_disclaimer_title)) },
+        text = { Text(stringResource(R.string.debloat_disclaimer)) },
+        confirmButton = { TextButton(onClick = { showDisclaimer = false }) { Text(stringResource(R.string.action_close)) } },
+    )
 
     val current = preset
-    if (confirm && current != null) {
-        AlertDialog(
-            onDismissRequest = { if (!busy) confirm = false },
-            title = { Text(stringResource(R.string.batch_confirm_title)) },
-            text = { Text(if (busy) stringResource(R.string.snapshot_restore_working) else stringResource(R.string.debloat_confirm_body, stringResource(actionLabel(action)), picked.size, current.name)) },
-            confirmButton = {
-                TextButton(enabled = connected && !busy, onClick = {
-                    busy = true
-                    val targets = picked.toList()
-                    val chosen = action
-                    scope.launch {
-                        report = repository.performBatch(targets, chosen)
-                        inventory = repository.cached
-                        busy = false
-                        confirm = false
-                        picked = emptySet()
-                    }
-                }) { Text(stringResource(R.string.action_confirm)) }
-            },
-            dismissButton = { TextButton(enabled = !busy, onClick = { confirm = false }) { Text(stringResource(R.string.action_cancel)) } },
-        )
-    }
+    if (confirm && current != null) AlertDialog(
+        onDismissRequest = { if (!busy) confirm = false },
+        title = { Text(stringResource(R.string.batch_confirm_title)) },
+        text = { Text(if (busy) stringResource(R.string.snapshot_restore_working) else stringResource(R.string.debloat_confirm_body, stringResource(actionLabel(action)), picked.size, current.name)) },
+        confirmButton = { TextButton(enabled = connected && !busy, onClick = {
+            busy = true
+            val targets = picked.toList()
+            val chosen = action
+            scope.launch {
+                report = repository.performBatch(targets, chosen)
+                inventory = repository.cached
+                busy = false
+                confirm = false
+                picked = emptySet()
+            }
+        }) { Text(stringResource(R.string.action_confirm)) } },
+        dismissButton = { TextButton(enabled = !busy, onClick = { confirm = false }) { Text(stringResource(R.string.action_cancel)) } },
+    )
 
     report?.let { r ->
         val applied = r.results.count { it.verdict == Verdict.APPLIED }
@@ -85,21 +79,21 @@ fun DebloatScreen(repository: InventoryRepository, connected: Boolean, modifier:
         )
     }
 
-    Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         CompactDisclaimer(onClick = { showDisclaimer = true })
         OutlinedTextField(
             value = search,
             onValueChange = { search = it },
-            label = { Text(stringResource(R.string.debloat_search)) },
+            placeholder = { Text(stringResource(R.string.debloat_search_hint)) },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().height(54.dp),
         )
         when {
             inventory !is InventoryResult.Ok -> Text(stringResource(if (connected) R.string.apps_loading else R.string.apps_waiting))
             current == null -> {
                 val q = search.trim().lowercase()
                 val shownPresets = KnowledgeBase.presets.filter { q.isEmpty() || it.name.lowercase().contains(q) || it.description.lowercase().contains(q) || it.pkgs.any { pkg -> pkg.lowercase().contains(q) || KnowledgeBase.classify(pkg, true).name.lowercase().contains(q) } }
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(shownPresets, key = { it.id }) { p ->
                         val present = p.pkgs.count { it in entries }
                         Card(onClick = { preset = p; picked = p.pkgs.filter { eligibleNow(it, action) }.toSet() }, enabled = present > 0, modifier = Modifier.fillMaxWidth()) {
