@@ -26,9 +26,9 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 | M0 core | done | READY, uid 2000 |
 | A1 inventory + guard + details | done | 835 total, 468 user, 367 system, 35 protected; counts match `pm` |
 | A2 single-package operations | done | Suspend/Unsuspend user and system apps; protected apps show no actions |
-| A3 snapshots, undo, pins, batch | done | see section 4 |
+| A3 snapshots, undo, pins, batch | done | phone-verified |
 | Debloat track | done | CI green and owner phone acceptance, including search and cross-manager restore |
-| A4 permissions + AppOps | **in progress** | read-only audit verified on Acode (user) and Android Easter Egg (system); Grant/Revoke verified on a real running app; Android stopped the app after revoke as a platform side effect; AppOps next |
+| A4 permissions + AppOps | **in progress** | Permission audit and Grant/Revoke phone-verified. AppOps parser/model implemented and unit-tested; last CI failed only in the prefixed-output parser edge case. AppOps UI and writes remain |
 | A5 to A8 | open | |
 | 1.0 release | open | |
 
@@ -43,50 +43,53 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 - Protected packages cannot be selected for a batch.
 - Debloat: SAFE-only presets, compact disclaimer (tested on Xiaomi Redmi Note 14 Global ROM; guidance, not a guarantee), preset/package search, Suspend and Remove-for-user, snapshots, read-back reports, Restore for packages removed earlier by another manager.
 - A4 audit: permission list with granted / not granted / unknown states on user and system apps. `WRITE_MEDIA_STORAGE` correctly shows unknown on a user app.
-- A4 Grant/Revoke: `POST_NOTIFICATIONS` grant and revoke both returned APPLIED with matching before/after read-back. The target app stopped after revoke, matching Android’s process enforcement behavior; warning text now makes this explicit.
+- A4 Grant/Revoke: `POST_NOTIFICATIONS` grant and revoke both returned APPLIED with matching before/after read-back. The target app stopped after revoke, matching Android process enforcement behavior.
 
-## 5. A4 design
+## 5. Current checkpoint and remaining path
 
-- Audit reads the `Packages:` block of `dumpsys package <pkg>` with `sed`, with a header-preserving grep fallback.
-- Sections parsed: `requested permissions:`, `install permissions:`, and `runtime permissions:` under `User 0:` only. Unknown output never creates state.
-- A permission is changeable only if runtime, known, and not `SYSTEM_FIXED` / `POLICY_FIXED`.
-- Grant/Revoke runs `pm grant|revoke --user 0`, re-reads the audit, and reports APPLIED / NOT_APPLIED / UNVERIFIABLE with before/after state.
-- Android may stop the target process while applying a permission change. VOID treats the permission state as the thing being changed, not app liveness.
-- Permission changes are not part of package snapshots; the result card records previous state for manual reversal.
+The latest successful phone checkpoint is permission audit plus runtime Grant/Revoke. The latest CI failure is isolated to `AppOpsTest > parsesCommonAppOpsOutput`, caused by a prefixed line such as `Uid mode: COARSE_LOCATION: foreground`; the parser fix is in the latest commit and must be confirmed green before continuing.
 
-## 6. Installer scope decision
+After CI is green:
 
-The planned installer supports **APK, APKS and XAPK** only. APKM is explicitly out of scope and must not be added to implementation or release claims.
+1. Add AppOps audit to App Details using `appops get <package>`.
+2. Show AppOps modes (`allow`, `deny`, `ignore`, `foreground`, `default`) separately from manifest permissions.
+3. Add guarded AppOps set/reset with valid-name and valid-mode checks, protected-app refusal, confirmation, and read-back.
+4. Phone-test Drive as a system app and a normal user app, then record unsupported OEM/API behavior honestly.
+5. Close A4 and move to A5: boot receivers, component control, and background AppOps.
+6. Continue A6 notifications/DND, A7 network controls, A8 APK/APKS/XAPK installer, then 1.0 release work.
+
+## 6. Design and safety decisions
+
+- AppOps is not the same thing as a runtime permission. Both are shown as separate sections.
+- Protected packages remain read-only even when Android exposes operations.
+- No change is reported APPLIED without read-back from Android.
+- APKM is out of scope; installer support is APK, APKS and XAPK only.
+- Root and Dhizuku are out of scope; execution is Shizuku only.
 
 ## 7. Problems found and fixes
 
-- Stale A2 test and clarified system-app Suspend rule: tests aligned.
-- Wrong SelectionContainer import: fixed.
-- Invalid typed inventory construction: fixed.
-- MediaStore duplicate files: fixed with moveToFirst + do/while; one canonical file.
-- Stale state after reinstall: details update repository state before actions rebuild.
-- App-private storage wiped on uninstall: public storage plus Import/Export recovery.
-- Repeated identical snapshots: deduplicated.
-- Protected batch checkbox: replaced by an empty slot.
-- Debloat disclaimer/search space: compact card and fixed-height search.
-- CI run #46 red: A4 UI and strings split across commits; #47 fixed it. Code and resources now land together.
-- First A4 audit grep dropped the runtime header: replaced by section-aware parsing.
-- Runtime permission changes can stop the target app process on Android; UI now warns before revoke/grant.
-- Some OEM system packages cannot be removed under Shizuku shell: reported unsupported. Root and Dhizuku out of scope.
+- CI run #46 red: A4 UI and strings were split across commits; #47 fixed it. Code/resources now land together.
+- First A4 audit grep dropped the runtime header; replaced by section-aware parsing.
+- Runtime audit initially showed stale state; fixed with full dumpsys plus authoritative `pm check-permission` read-back.
+- AppOps parser first handled only unprefixed lines; latest failure exposed prefixed Android output and was fixed by parsing the final operation/mode pair.
+- Android may stop the target process during permission changes; UI warns before Grant/Revoke.
+- Some OEM system packages cannot be removed under Shizuku shell; reported unsupported. Root/Dhizuku remain out of scope.
 
 ## 8. Remaining work, in order
 
-1. Finish A4: AppOps special-access audit and guarded set/reset with honest unsupported results.
-2. A5 boot receivers, component control, background AppOps.
-3. A6 notification listener, DND access, per-app notification mute.
-4. A7 Chain3 per-app network block and netpolicy background data.
-5. A8 installer for APK, APKS and XAPK, OBB placement, extraction, cache trimming, safe shared-storage cleanup. APKM stays out of scope.
-6. 1.0: rewrite README including Debloat disclaimer, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
+1. Confirm latest AppOps parser fix green.
+2. AppOps audit UI, guarded set/reset, read-back, and Drive phone test.
+3. A5 boot receivers, component control, background AppOps.
+4. A6 notification listener, DND access, per-app notification mute.
+5. A7 Chain3 per-app network block and netpolicy background data.
+6. A8 installer for APK, APKS and XAPK, OBB placement, extraction, cache trimming, safe shared-storage cleanup. APKM stays out of scope.
+7. 1.0: README including disclaimers, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
 
 ## 9. Commit trail
 
 - `3ad1a13` through `a9d19f0`: native foundation, A1-A3, Debloat, cross-manager restore, and Debloat UI fixes.
-- `c86a46c`, `4a128f8`: A4 parser foundation; APKM removed from scope.
-- `2d66045`, `1196863`: read-only permission audit in details (+ strings fix).
-- `1ea2245`: runtime section parsing with flags, guarded Grant/Revoke with read-back, tests, docs.
-- current push: permission-change warning and documentation of Android process-stop behavior.
+- `c86a46c`, `4a128f8`: A4 foundation and APKM scope decision.
+- `2d66045`, `1196863`: read-only permission audit in details.
+- `1ea2245`: runtime parsing and Grant/Revoke.
+- `ec27559`, `49a285e`, `822fac8`: authoritative runtime read-back and AppOps parser foundation.
+- current push: prefixed AppOps parser fix and checkpoint documentation.

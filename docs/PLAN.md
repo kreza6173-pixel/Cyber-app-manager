@@ -20,8 +20,8 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 2. Read-only permission audit in app details. **Done, phone-verified on user and system apps.**
 3. Runtime permission parsing and authoritative User 0 read-back. **Done, phone-verified.**
 4. Guarded runtime Grant/Revoke with confirmation and read-back. **Done, phone-verified on a real app.**
-5. AppOps audit parser and explicit set/reset command model. **Started in this push, unit-tested.**
-6. Wire AppOps audit into App Details, then guarded set/reset with device read-back and honest unsupported results. **Next push.**
+5. AppOps audit parser and explicit set/reset command model. **Implemented and unit-tested; one CI parser edge case fixed in the latest push.**
+6. Wire AppOps audit into App Details, then guarded set/reset with device read-back and honest unsupported results. **Next.**
 
 ## Then
 

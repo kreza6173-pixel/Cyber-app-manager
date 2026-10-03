@@ -13,13 +13,13 @@ data class AppOpRecord(
 data class AppOpsAudit(val packageName: String, val operations: List<AppOpRecord>)
 
 /* Android emits both `camera: allow` and prefixed lines such as `Uid mode: COARSE_LOCATION: foreground`. */
-private val APP_OP_LINE = Regex("([a-z][a-z0-9_]*):\\s*([a-z]+)(?:;\\s*(.*))?$", RegexOption.IGNORE_CASE)
+private val APP_OP_PAIR = Regex("([a-z][a-z0-9_]*):\\s*([a-z]+)(?:;\\s*(.*))?$", RegexOption.IGNORE_CASE)
 
-/** Parses `appops get <package>` without treating unrelated dumpsys prose as an operation. */
+/** Parses appops output by taking the final operation/mode pair on each line. */
 fun parseAppOps(packageName: String, text: String): AppOpsAudit {
     val records = linkedMapOf<String, AppOpRecord>()
     for (raw in text.lineSequence()) {
-        val match = APP_OP_LINE.find(raw.trim()) ?: continue
+        val match = APP_OP_PAIR.findAll(raw.trim()).lastOrNull() ?: continue
         val op = match.groupValues[1].lowercase()
         val mode = match.groupValues[2].lowercase()
         if (mode in AppOpRecord.CHANGEABLE_MODES && isValidAppOp(op)) {
