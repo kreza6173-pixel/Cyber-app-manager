@@ -9,14 +9,23 @@ object AppActions {
     fun availableFor(e: AppEntry): List<AppAction> {
         if (e.protectedReason != null) return emptyList()
         return when (e.state) {
-            AppState.ENABLED -> listOf(AppAction.SUSPEND, AppAction.FORCE_STOP, AppAction.CLEAR_DATA) + if (e.isSystem) listOf(AppAction.REMOVE) else emptyList()
-            AppState.SUSPENDED -> listOf(AppAction.UNSUSPEND)
-            AppState.FROZEN -> listOf(AppAction.UNFREEZE) + if (e.isSystem) listOf(AppAction.REMOVE) else emptyList()
+            AppState.ENABLED -> buildList {
+                if (!e.isSystem) add(AppAction.SUSPEND)
+                add(AppAction.FORCE_STOP)
+                add(AppAction.CLEAR_DATA)
+                if (e.isSystem) add(AppAction.REMOVE)
+            }
+            AppState.SUSPENDED -> if (!e.isSystem) listOf(AppAction.UNSUSPEND) else emptyList()
+            AppState.FROZEN -> buildList {
+                add(AppAction.UNFREEZE)
+                if (e.isSystem) add(AppAction.REMOVE)
+            }
             AppState.REMOVED -> listOf(AppAction.RESTORE)
         }
     }
 
-    fun needsConfirmation(a: AppAction): Boolean = a == AppAction.SUSPEND || a == AppAction.FREEZE || a == AppAction.REMOVE || a == AppAction.CLEAR_DATA
+    fun needsConfirmation(a: AppAction): Boolean =
+        a == AppAction.SUSPEND || a == AppAction.FREEZE || a == AppAction.REMOVE || a == AppAction.CLEAR_DATA
 
     fun command(a: AppAction, pkg: String): String {
         require(isValidPackageName(pkg)) { "invalid package name" }

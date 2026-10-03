@@ -48,7 +48,7 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         }
         val after = details(pkg); val flags: Map<String, String>; val raw: String
         when (after) { is DetailsResult.Ok -> { flags = after.details.userFlags; raw = after.raw }; is DetailsResult.Error -> { flags = emptyMap(); raw = after.message } }
-        val verdict = AppActions.verify(action, flags, output); val newState = AppActions.stateFrom(flags); if (newState != null) updateState(pkg, newState)
+        val verdict = AppActions.verify(action, flags, output); AppActions.stateFrom(flags)?.let { updateState(pkg, it) }
         ActionResult(action, verdict, cmd, output, raw)
     }
 
