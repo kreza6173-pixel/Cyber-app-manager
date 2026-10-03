@@ -18,18 +18,19 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 
 1. Permission parser for `dumpsys package`. **Done.**
 2. Read-only permission audit in app details. **Done, phone-verified on user and system apps.**
-3. Runtime permission section of user 0 parsed separately, with flags (`SYSTEM_FIXED`, `POLICY_FIXED`, `USER_SET` ...). **Done, unit-tested.**
-4. Guarded runtime Grant/Revoke (`pm grant/revoke --user 0`) with confirmation and read-back. **Implemented and phone-tested on a real running app. Android may terminate that app process while enforcing the change; this is a platform side effect, not evidence that the read-back is wrong.**
-5. AppOps special-access audit (`appops get`) and guarded set/reset with honest unsupported results. **Next.**
+3. Runtime permission parsing and authoritative User 0 read-back. **Done, phone-verified.**
+4. Guarded runtime Grant/Revoke with confirmation and read-back. **Done, phone-verified on a real app.**
+5. AppOps audit parser and explicit set/reset command model. **Started in this push, unit-tested.**
+6. Wire AppOps audit into App Details, then guarded set/reset with device read-back and honest unsupported results. **Next push.**
 
 ## Then
 
 - A5 boot receivers, component control, background AppOps.
 - A6 notification listener, DND access, per-app notification mute.
-- A7 Chain3 per-app network block, netpolicy background data.
+- A7 Chain3 per-app network block and netpolicy background data.
 - A8 session install for APK, APKS and XAPK, OBB placement, extraction, cache trimming, safe shared-storage cleanup. APKM is out of scope.
 - 1.0: README rewrite, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
 
 ## Gates
 
-No INTERNET permission. No protected bypass. No destructive batch without preview and snapshot. No support claim without a device probe. No release claim while CI or device acceptance is red. Code and its strings/resources always land in the same commit.
+No INTERNET permission. No protected bypass. No destructive batch without preview and snapshot. No support claim without a device probe. No release claim while CI or device acceptance is red. Code and its strings/resources always land in one commit.
