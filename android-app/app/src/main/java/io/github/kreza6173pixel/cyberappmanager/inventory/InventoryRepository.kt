@@ -22,6 +22,7 @@ class InventoryRepository(
     @Volatile var cached: InventoryResult? = null; private set
     fun entryFor(pkg: String): AppEntry? = (cached as? InventoryResult.Ok)?.entries?.firstOrNull { it.pkg == pkg }
     fun snapshots(): List<Snapshot> = snapshotStore.list()
+    fun deleteSnapshot(id: String): Boolean = snapshotStore.delete(id)
     fun pins(): Set<String> = pinStore.list()
     fun setPinned(pkg: String, pinned: Boolean): Set<String> = pinStore.set(pkg, pinned)
 
