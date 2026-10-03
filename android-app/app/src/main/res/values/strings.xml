@@ -27,6 +27,8 @@
     <string name="action_refresh">Re-check</string>
     <string name="action_copy">Copy</string>
     <string name="action_share">Share</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_cancel">Cancel</string>
     <string name="copied">Copied</string>
 
     <string name="home_open_apps">Apps</string>
@@ -54,7 +56,7 @@
     <string name="detail_state_enabled">Enabled</string>
     <string name="detail_state_frozen">Frozen (disabled for this user)</string>
     <string name="detail_state_removed">Removed for this user (restorable)</string>
-    <string name="detail_protected_format">Protected (%1$s). Actions on this app will be refused.</string>
+    <string name="detail_protected_format">Protected (%1$s). Actions on this app are refused.</string>
     <string name="detail_version">Version</string>
     <string name="detail_sdk">min / target SDK</string>
     <string name="detail_installer">Installer</string>
@@ -64,6 +66,24 @@
     <string name="detail_raw">Raw output</string>
     <string name="detail_error">Could not read package details.</string>
     <string name="value_none">—</string>
+
+    <string name="actions_title">Actions</string>
+    <string name="actions_user_remove_later">Removing a user app comes with snapshots (next step), so it can always be undone.</string>
+    <string name="action_freeze">Freeze</string>
+    <string name="action_unfreeze">Unfreeze</string>
+    <string name="action_force_stop">Force stop</string>
+    <string name="action_remove">Remove for this user</string>
+    <string name="action_restore">Restore</string>
+    <string name="action_clear">Clear data</string>
+    <string name="warn_freeze">%1$s will be disabled until you unfreeze it. Its icon disappears and it cannot run.</string>
+    <string name="warn_remove">%1$s will be removed for this user. Its data is kept, and Restore brings it back.</string>
+    <string name="warn_clear">All data of %1$s will be deleted. This cannot be undone.</string>
+    <string name="warn_generic">Apply this to %1$s?</string>
+    <string name="verdict_applied">applied, confirmed by read-back.</string>
+    <string name="verdict_not_applied">NOT applied. The read-back does not show the change.</string>
+    <string name="verdict_unverifiable">reported success. Android offers no way to read this change back.</string>
+    <string name="verdict_refused">refused, nothing was run.</string>
+    <string name="verdict_failed">could not run the command.</string>
 
     <string name="console_title">VOID // CONSOLE</string>
     <string name="console_command_label">Shell command</string>

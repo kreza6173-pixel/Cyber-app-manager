@@ -18,8 +18,16 @@ sealed interface DetailsResult {
     data class Error(val message: String) : DetailsResult
 }
 
+data class ActionResult(
+    val action: AppAction,
+    val verdict: Verdict,
+    val command: String,
+    val output: String,
+    val readBack: String,
+)
+
 /**
- * Package state comes from `pm` (the tool A2 uses to change it), labels from PackageManager.
+ * Package state comes from `pm` (the same tool that changes it), labels from PackageManager.
  * Every call runs through the Shizuku user service on Dispatchers.IO.
  */
 class InventoryRepository(private val context: Context, private val bridge: ExecBridge) {
@@ -78,6 +86,47 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
             is ShellResult.Ok -> DetailsResult.Ok(parsePackageDetails(r.stdout), r.stdout.trim())
             is ShellResult.Bad -> DetailsResult.Error(r.message)
         }
+    }
+
+    /**
+     * Runs one A2 action and reads the package back. The guard is enforced HERE, not only by
+     * hiding buttons: an action that availableFor() does not offer is refused unrun.
+     */
+    suspend fun perform(pkg: String, action: AppAction): ActionResult = withContext(Dispatchers.IO) {
+        val entry = entryFor(pkg)
+        if (entry == null || action !in AppActions.availableFor(entry)) {
+            val why = entry?.protectedReason?.let { "protected: $it" } ?: "action not available for this app"
+            return@withContext ActionResult(action, Verdict.REFUSED, "", why, "")
+        }
+        val cmd = AppActions.command(action, pkg)
+        val output = when (val o = bridge.execBlocking(cmd, TIMEOUT_MS)) {
+            is ExecOutcome.Failed -> return@withContext ActionResult(action, Verdict.FAILED, cmd, o.message, "")
+            is ExecOutcome.Completed ->
+                (o.result.stdout + "\n" + o.result.stderr).trim() + "\n(exit " + o.result.exitCode + ")"
+        }
+        val after = details(pkg)
+        val flags: Map<String, String>
+        val raw: String
+        when (after) {
+            is DetailsResult.Ok -> {
+                flags = after.details.userFlags
+                raw = after.raw
+            }
+            is DetailsResult.Error -> {
+                flags = emptyMap()
+                raw = after.message
+            }
+        }
+        val verdict = AppActions.verify(action, flags, output)
+        val newState = AppActions.stateFrom(flags)
+        if (newState != null) updateState(pkg, newState)
+        ActionResult(action, verdict, cmd, output, raw)
+    }
+
+    private fun updateState(pkg: String, state: AppState) {
+        val ok = cached as? InventoryResult.Ok ?: return
+        val entries = ok.entries.map { if (it.pkg == pkg) it.copy(state = state) else it }
+        cached = InventoryResult.Ok(entries, countsOf(entries))
     }
 
     private fun labelOf(pm: PackageManager, pkg: String): String? = runCatching {

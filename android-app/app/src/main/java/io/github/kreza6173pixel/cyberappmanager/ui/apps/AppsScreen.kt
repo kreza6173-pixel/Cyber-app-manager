@@ -147,12 +147,14 @@ private fun AppRow(entry: AppEntry, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(top = 8.dp, bottom = 8.dp),
     ) {
-        Text(
-            text = entry.label,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (entry.label != entry.pkg) {
+            Text(
+                text = entry.label,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         LtrMonoText(entry.pkg)
         Text(
             text = tags.joinToString(" \u00b7 "),
