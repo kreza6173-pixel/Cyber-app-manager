@@ -1,10 +1,14 @@
 package io.github.kreza6173pixel.cyberappmanager.ui.snapshots
 
+import androidx.compose.foundation.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -66,10 +70,22 @@ fun SnapshotsScreen(repository: InventoryRepository, modifier: Modifier = Modifi
     }
 
     selected?.let { snapshot ->
+        val detailText = snapshot.entries.joinToString("\n") { "${it.pkg} · ${it.state.name.lowercase()}" }
         AlertDialog(
             onDismissRequest = { selected = null },
             title = { Text(snapshot.name) },
-            text = { Text(snapshot.entries.joinToString("\n") { "${it.pkg} · ${it.state.name.lowercase()}" }) },
+            text = {
+                SelectionContainer {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 480.dp)
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        Text(detailText)
+                    }
+                }
+            },
             confirmButton = { TextButton(onClick = { selected = null }) { Text(stringResource(R.string.action_close)) } },
         )
     }
