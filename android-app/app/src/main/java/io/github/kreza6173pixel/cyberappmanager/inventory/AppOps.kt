@@ -90,6 +90,13 @@ fun appOpModeIn(audit: AppOpsAudit, op: String, scope: AppOpScope): String? {
     return if (scope == AppOpScope.UID) record.uidMode else record.packageMode
 }
 
+/**
+ * Non-null when a package-scope change must be refused: the op has a non-default uid mode.
+ * AOSP evaluates the uid mode first, so a package mode has no effect while it is set, and on the
+ * reference ROM such package changes were silently kept (ACCEPT_HANDOVER on Drive and Acode).
+ */
+fun packageScopeBlockedBy(record: AppOpRecord): String? = record.uidMode?.takeIf { it != "default" }
+
 /** Exact uid from `pm list packages -U <filter>`; the filter is a substring match, so the name must be equal. */
 fun uidOf(pkg: String, listOutput: String): Int? = listOutput.lineSequence()
     .mapNotNull { PACKAGE_UID.find(it.trim()) }

@@ -106,6 +106,11 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         if (!beforeResult.audit.scoped) return@withContext refused("uid and package scope could not be separated on this ROM")
         if (scope == AppOpScope.UID && uid < 10000) return@withContext refused("system uid $uid: a uid-wide change would apply to every package in it")
         val before = appOpModeIn(beforeResult.audit, op, scope)
+        if (scope == AppOpScope.PACKAGE) {
+            beforeResult.audit.operations.firstOrNull { it.op == op }?.let(::packageScopeBlockedBy)?.let { uidMode ->
+                return@withContext refused("uid mode $uidMode is set for this op and takes precedence; package changes have no effect and were silently kept on this ROM", before)
+            }
+        }
         if ((before ?: "default") == mode) return@withContext refused("already in the requested state", before)
         val cmd = appOpSetCommand(scope, ShellQuoting.quote(pkg), uid, op, mode)
         val output = when (val o = bridge.execBlocking(cmd, TIMEOUT_MS)) { is ExecOutcome.Failed -> return@withContext AppOpChangeResult(pkg, op, scope, mode, Verdict.FAILED, cmd, o.message, before, null); is ExecOutcome.Completed -> (o.result.stdout + "\n" + o.result.stderr).trim() + "\n(exit ${o.result.exitCode})" }

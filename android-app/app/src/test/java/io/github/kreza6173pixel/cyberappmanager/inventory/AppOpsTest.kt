@@ -98,6 +98,16 @@ class AppOpsTest {
         assertNull(appOpModeIn(audit, "start_foreground", AppOpScope.UID))
     }
 
+    /** Probe on Acode: package set to ignore returned exit 0 but Android kept `allow` while uid mode was `ignore`. */
+    @Test fun packageScopeIsBlockedWhileUidModeIsSet() {
+        val uid = "Uid mode: ACCEPT_HANDOVER: ignore"
+        val full = uid + "\nACCEPT_HANDOVER: allow\nREAD_CLIPBOARD: allow"
+        val audit = parseAppOpsScoped("com.foxdebug.acode", full, uid)
+        assertEquals("ignore", packageScopeBlockedBy(audit.operations.first { it.op == "accept_handover" }))
+        assertNull(packageScopeBlockedBy(audit.operations.first { it.op == "read_clipboard" }))
+        assertNull(packageScopeBlockedBy(AppOpRecord("camera", "allow", uidMode = "default", scoped = true)))
+    }
+
     @Test fun fallsBackToMergedWhenUidPrefixDoesNotMatch() {
         val audit = parseAppOpsScoped("pkg", "CAMERA: allow\nWAKE_LOCK: allow", "Uid mode: CAMERA: ignore")
         assertFalse(audit.scoped)

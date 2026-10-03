@@ -155,25 +155,31 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
     }
 }
 
-/** Scope and mode picker. Uid scope is disabled for system uids; the repository refuses it as well. */
+/**
+ * Scope and mode picker. Package scope is disabled while a non-default uid mode is set (it takes precedence);
+ * uid scope is disabled for system uids. The repository refuses both cases as well.
+ */
 @Composable private fun AppOpChangeDialog(op: AppOpRecord, uid: Int?, onDismiss: () -> Unit, onConfirm: (AppOpScope, String) -> Unit) {
     val uidAllowed = uid != null && uid >= 10000
-    var opScope by remember(op) { mutableStateOf(AppOpScope.PACKAGE) }
-    var opMode by remember(op) { mutableStateOf(op.packageMode ?: "default") }
+    val packageBlockedBy = packageScopeBlockedBy(op)
+    val packageAllowed = packageBlockedBy == null
+    var opScope by remember(op) { mutableStateOf(if (packageAllowed || !uidAllowed) AppOpScope.PACKAGE else AppOpScope.UID) }
+    var opMode by remember(op) { mutableStateOf((if (opScope == AppOpScope.UID) op.uidMode else op.packageMode) ?: "default") }
+    val selectedAllowed = if (opScope == AppOpScope.UID) uidAllowed else packageAllowed
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.appop_change_title, op.op)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(stringResource(R.string.appop_scope_label), style = MaterialTheme.typography.labelMedium)
-                ChoiceRow(stringResource(R.string.appop_scope_package), opScope == AppOpScope.PACKAGE, true) { opScope = AppOpScope.PACKAGE; opMode = op.packageMode ?: "default" }
+                ChoiceRow(if (packageBlockedBy == null) stringResource(R.string.appop_scope_package) else stringResource(R.string.appop_scope_package_blocked, packageBlockedBy), opScope == AppOpScope.PACKAGE, packageAllowed) { opScope = AppOpScope.PACKAGE; opMode = op.packageMode ?: "default" }
                 ChoiceRow(stringResource(if (uidAllowed) R.string.appop_scope_uid else R.string.appop_scope_uid_refused), opScope == AppOpScope.UID, uidAllowed) { opScope = AppOpScope.UID; opMode = op.uidMode ?: "default" }
                 Text(stringResource(R.string.appop_mode_label), style = MaterialTheme.typography.labelMedium)
-                AppOpRecord.CHANGEABLE_MODES.forEach { m -> ChoiceRow(m, opMode == m, true) { opMode = m } }
+                AppOpRecord.CHANGEABLE_MODES.forEach { m -> ChoiceRow(m, opMode == m, selectedAllowed) { opMode = m } }
                 Text(stringResource(R.string.appop_change_note), style = MaterialTheme.typography.labelSmall)
             }
         },
-        confirmButton = { TextButton({ onConfirm(opScope, opMode) }) { Text(stringResource(R.string.action_confirm)) } },
+        confirmButton = { TextButton({ onConfirm(opScope, opMode) }, enabled = selectedAllowed) { Text(stringResource(R.string.action_confirm)) } },
         dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
 }
@@ -187,9 +193,11 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
 
 @Composable private fun AppOpResultCard(r: AppOpChangeResult) {
     val report = "$ ${r.command}\n${r.output}\n\nbefore: ${r.before ?: "default (not listed)"}\nafter: ${r.after ?: "default (not listed)"}"
+    val silentlyKept = r.verdict == Verdict.NOT_APPLIED && r.before == r.after && r.output.endsWith("(exit 0)")
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
             Text(stringResource(R.string.appop_result_format, r.op, r.scope.name.lowercase(), r.mode, stringResource(verdictRes(r.verdict))), color = if (r.verdict == Verdict.APPLIED) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+            if (silentlyKept) Text(stringResource(R.string.appop_silently_kept), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             LtrMonoText(report)
             CopyShareButtons(report)
         }
