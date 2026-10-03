@@ -93,23 +93,22 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
     }
 
     /**
-     * Guarded AppOps change for one op in one scope, then read back with a fresh scoped audit.
+     * Guarded AppOps change for one op in package scope, then read back with a fresh scoped audit.
+     * Uid scope is refused: on the reference ROM every `appops set <uid>` returned exit 0 and kept the mode.
      * An op missing from a scope counts as default. APPLIED only when the read-back matches.
      */
     suspend fun setAppOp(pkg: String, op: String, scope: AppOpScope, mode: String): AppOpChangeResult = withContext(Dispatchers.IO) {
         fun refused(reason: String, before: String? = null) = AppOpChangeResult(pkg, op, scope, mode, Verdict.REFUSED, "", reason, before, before)
         if (!isValidPackageName(pkg) || !isValidAppOp(op) || !isValidAppOpMode(mode)) return@withContext refused("invalid package, operation or mode")
+        if (scope == AppOpScope.UID) return@withContext refused("uid-scope changes are disabled: this ROM returned success and kept the uid mode (CAMERA, CALL_PHONE on Acode); use Grant or Revoke in Permissions")
         val e = entryFor(pkg) ?: return@withContext refused("inventory not loaded")
         e.protectedReason?.let { return@withContext refused("protected: $it") }
         val beforeResult = appOpsAudit(pkg) as? AppOpsAuditResult.Ok ?: return@withContext refused("AppOps state unavailable")
         val uid = beforeResult.uid ?: return@withContext refused("uid unavailable")
         if (!beforeResult.audit.scoped) return@withContext refused("uid and package scope could not be separated on this ROM")
-        if (scope == AppOpScope.UID && uid < 10000) return@withContext refused("system uid $uid: a uid-wide change would apply to every package in it")
         val before = appOpModeIn(beforeResult.audit, op, scope)
-        if (scope == AppOpScope.PACKAGE) {
-            beforeResult.audit.operations.firstOrNull { it.op == op }?.let(::packageScopeBlockedBy)?.let { uidMode ->
-                return@withContext refused("uid mode $uidMode is set for this op and takes precedence; package changes have no effect and were silently kept on this ROM", before)
-            }
+        beforeResult.audit.operations.firstOrNull { it.op == op }?.let(::packageScopeBlockedBy)?.let { uidMode ->
+            return@withContext refused("uid mode $uidMode is set for this op and takes precedence; package changes have no effect and were silently kept on this ROM", before)
         }
         if ((before ?: "default") == mode) return@withContext refused("already in the requested state", before)
         val cmd = appOpSetCommand(scope, ShellQuoting.quote(pkg), uid, op, mode)

@@ -49,9 +49,9 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
     )
 
     val pendingOp = appOpChange
-    if (pendingOp != null) AppOpChangeDialog(pendingOp, (appOps as? AppOpsAuditResult.Ok)?.uid, onDismiss = { appOpChange = null }) { opScope, opMode ->
+    if (pendingOp != null) AppOpChangeDialog(pendingOp, onDismiss = { appOpChange = null }) { opMode ->
         appOpChange = null; busy = true
-        scope.launch { appOpResult = repository.setAppOp(pkg, pendingOp.op, opScope, opMode); busy = false; reload++ }
+        scope.launch { appOpResult = repository.setAppOp(pkg, pendingOp.op, AppOpScope.PACKAGE, opMode); busy = false; reload++ }
     }
 
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -123,7 +123,7 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
     }
 }
 
-/** AppOps are shown apart from manifest permissions. Changes need a reliable uid/package split. */
+/** AppOps are shown apart from manifest permissions. Change is offered only for package modes not overridden by a uid mode. */
 @Composable private fun AppOpsAuditCard(result: AppOpsAuditResult?, canChange: Boolean, onChange: (AppOpRecord) -> Unit) {
     var showRaw by remember(result) { mutableStateOf(false) }
     when (result) {
@@ -143,7 +143,7 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
                     ops.forEach { op ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             SelectionContainer(Modifier.weight(1f)) { Text(appOpLabel(op), style = MaterialTheme.typography.bodySmall, color = appOpColor(op.mode)) }
-                            if (editable && op.changeable) TextButton({ onChange(op) }) { Text(stringResource(R.string.appop_change)) }
+                            if (editable && op.changeable && packageScopeBlockedBy(op) == null) TextButton({ onChange(op) }) { Text(stringResource(R.string.appop_change)) }
                         }
                     }
                     Text(stringResource(R.string.appops_read_only), style = MaterialTheme.typography.labelSmall)
@@ -155,31 +155,23 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
     }
 }
 
-/**
- * Scope and mode picker. Package scope is disabled while a non-default uid mode is set (it takes precedence);
- * uid scope is disabled for system uids. The repository refuses both cases as well.
- */
-@Composable private fun AppOpChangeDialog(op: AppOpRecord, uid: Int?, onDismiss: () -> Unit, onConfirm: (AppOpScope, String) -> Unit) {
-    val uidAllowed = uid != null && uid >= 10000
-    val packageBlockedBy = packageScopeBlockedBy(op)
-    val packageAllowed = packageBlockedBy == null
-    var opScope by remember(op) { mutableStateOf(if (packageAllowed || !uidAllowed) AppOpScope.PACKAGE else AppOpScope.UID) }
-    var opMode by remember(op) { mutableStateOf((if (opScope == AppOpScope.UID) op.uidMode else op.packageMode) ?: "default") }
-    val selectedAllowed = if (opScope == AppOpScope.UID) uidAllowed else packageAllowed
+/** Package-scope mode picker. Uid scope is shown disabled with the reason; the repository refuses it as well. */
+@Composable private fun AppOpChangeDialog(op: AppOpRecord, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var opMode by remember(op) { mutableStateOf(op.packageMode ?: "default") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.appop_change_title, op.op)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(stringResource(R.string.appop_scope_label), style = MaterialTheme.typography.labelMedium)
-                ChoiceRow(if (packageBlockedBy == null) stringResource(R.string.appop_scope_package) else stringResource(R.string.appop_scope_package_blocked, packageBlockedBy), opScope == AppOpScope.PACKAGE, packageAllowed) { opScope = AppOpScope.PACKAGE; opMode = op.packageMode ?: "default" }
-                ChoiceRow(stringResource(if (uidAllowed) R.string.appop_scope_uid else R.string.appop_scope_uid_refused), opScope == AppOpScope.UID, uidAllowed) { opScope = AppOpScope.UID; opMode = op.uidMode ?: "default" }
+                ChoiceRow(stringResource(R.string.appop_scope_package), selected = true, enabled = true) {}
+                ChoiceRow(stringResource(R.string.appop_scope_uid_unsupported), selected = false, enabled = false) {}
                 Text(stringResource(R.string.appop_mode_label), style = MaterialTheme.typography.labelMedium)
-                AppOpRecord.CHANGEABLE_MODES.forEach { m -> ChoiceRow(m, opMode == m, selectedAllowed) { opMode = m } }
+                AppOpRecord.CHANGEABLE_MODES.forEach { m -> ChoiceRow(m, opMode == m, true) { opMode = m } }
                 Text(stringResource(R.string.appop_change_note), style = MaterialTheme.typography.labelSmall)
             }
         },
-        confirmButton = { TextButton({ onConfirm(opScope, opMode) }, enabled = selectedAllowed) { Text(stringResource(R.string.action_confirm)) } },
+        confirmButton = { TextButton({ onConfirm(opMode) }) { Text(stringResource(R.string.action_confirm)) } },
         dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
 }

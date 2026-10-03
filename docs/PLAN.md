@@ -16,14 +16,11 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 
 ## In progress: A4 permissions and AppOps
 
-1. Permission parser for `dumpsys package`. **Done.**
-2. Read-only permission audit in app details. **Done, phone-verified on small apps, Drive, Meet, Play Store, and shared-uid com.miui.securitycenter.**
-3. Runtime permission parsing and authoritative User 0 read-back. **Done, phone-verified.**
-4. Guarded runtime Grant/Revoke with confirmation and read-back. **Done, phone-verified on Drive, Meet, Play Store. Refused on shared system uids.**
-5. AppOps audit parser and command model. **Done, unit-tested.**
-6. AppOps audit card, OEM ops, uid/package scope split. **Done, phone-verified on Drive (uid 10176) and securitycenter (uid 1000).**
-7. Guarded AppOps change (scope, mode, read-back). **Implemented in `dc3ec81`; awaiting CI and phone test.**
-8. Read-only Self-check over all packages. **Next after 7.**
+1. Permission audit, runtime read-back, Grant/Revoke. **Done, phone-verified (Drive, Meet, Play Store, Acode).**
+2. Shared-uid permissions with system-uid write refusal. **Done, phone-verified (securitycenter).**
+3. AppOps audit, OEM ops, uid/package scope split. **Done, phone-verified (Drive, securitycenter, Acode).**
+4. AppOps change. **Package scope works for ops without a uid mode (phone-verified on Acode). Uid scope disabled: this ROM silently kept every uid change. Latest push hides Change where it cannot work; awaiting CI and a short phone check.**
+5. Read-only Self-check over all packages. **Next.**
 
 ## Then
 
@@ -35,4 +32,4 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 
 ## Gates
 
-No INTERNET permission. No protected bypass. No destructive batch without preview and snapshot. No support claim without a device probe. No release claim while CI or device acceptance is red. Code and its strings/resources always land in one commit. Shell filters are measured on the phone before they are relied on.
+No INTERNET permission. No protected bypass. No destructive batch without preview and snapshot. No support claim without a device probe. No release claim while CI or device acceptance is red. Code and its strings/resources always land in one commit. Shell filters are measured on the phone before they are relied on. A write control is shown only where a phone test showed Android accepts it.
