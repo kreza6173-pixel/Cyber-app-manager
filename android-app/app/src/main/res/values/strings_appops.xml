@@ -4,7 +4,7 @@
     <string name="appops_loading">Reading AppOps state…</string>
     <string name="appops_error">AppOps state unavailable on this ROM.</string>
     <string name="appops_empty">Android reported no AppOps entries for this package.</string>
-    <string name="appops_read_only">AppOps are separate from manifest permissions. This section is an audit only and nothing is changed. When Android reports both a uid mode and a package mode for one operation, the last reported line is shown; check the raw output for both.</string>
+    <string name="appops_read_only">AppOps are separate from manifest permissions. This section is an audit only and nothing is changed. When Android reports the same operation more than once (uid scope and package scope), the last mode is shown and the others are listed as also reported. OEM operations such as MIUIOP(n) are shown read-only. Check the raw output for the exact text.</string>
     <string name="appops_raw_show">Show raw appops output</string>
     <string name="appops_raw_hide">Hide raw output</string>
 </resources>

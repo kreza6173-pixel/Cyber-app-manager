@@ -40,6 +40,25 @@ class AppOpsTest {
         assertEquals("ignore", audit.operations.first { it.op == "camera" }.mode)
     }
 
+    /** Lines taken from Drive on the Redmi Note 14 (Android 16, MIUI/HyperOS). */
+    @Test fun keepsOemOpsReadOnlyAndReportsDuplicateModes() {
+        val audit = parseAppOps("com.google.android.apps.docs", """
+            Uid mode: ACCESS_RESTRICTED_SETTINGS: allow
+            ACCESS_RESTRICTED_SETTINGS: default; time=+19h26m44s501ms ago
+            MIUIOP(10008): allow; time=+4h5m22s172ms ago
+            MIUIOP(10053): ignore
+        """.trimIndent())
+        assertEquals(3, audit.operations.size)
+        val oem = audit.operations.first { it.op == "miuiop(10008)" }
+        assertTrue(oem.oem)
+        assertFalse(oem.changeable)
+        assertEquals(2, audit.operations.count { it.oem })
+        val restricted = audit.operations.first { it.op == "access_restricted_settings" }
+        assertEquals("default", restricted.mode)
+        assertEquals(listOf("allow"), restricted.alsoReported)
+        assertFalse(isValidAppOp("miuiop(10008)"))
+    }
+
     @Test fun commandsUseExplicitMode() {
         assertEquals("appops set pkg camera allow", appOpsSetCommand("pkg", "camera", "allow"))
         assertEquals("appops set pkg camera default", appOpsResetCommand("pkg", "camera"))

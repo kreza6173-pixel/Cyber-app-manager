@@ -47,11 +47,11 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         when (val r = shell("dumpsys package ${ShellQuoting.quote(pkg)} | grep -E ${ShellQuoting.quote(DETAIL_PATTERN)} | head -n 20", true)) { is ShellResult.Ok -> { val p = parsePackageDetails(r.stdout); AppActions.stateFrom(p.userFlags)?.let { updateState(pkg, it) }; DetailsResult.Ok(p, r.stdout.trim()) }; is ShellResult.Bad -> DetailsResult.Error(r.message) }
     }
 
-    /** Full dumpsys keeps section headers; pm check-permission is the authority for runtime state. */
+    /** Numbered on-device filter keeps section boundaries under the 64 KiB cap; pm check-permission is the authority for runtime state. */
     suspend fun permissionAudit(pkg: String): PermissionAuditResult = withContext(Dispatchers.IO) {
         if (!isValidPackageName(pkg)) return@withContext PermissionAuditResult.Error("invalid package name: $pkg")
         val q = ShellQuoting.quote(pkg)
-        val raw = when (val r = shell("dumpsys package $q", false)) { is ShellResult.Ok -> r.stdout; is ShellResult.Bad -> return@withContext PermissionAuditResult.Error(r.message) }
+        val raw = when (val r = shell("dumpsys package $q | grep -nE ${ShellQuoting.quote(PERMISSION_DUMP_PATTERN)}", true)) { is ShellResult.Ok -> joinNumberedLines(r.stdout); is ShellResult.Bad -> return@withContext PermissionAuditResult.Error(r.message) }
         val parsed = parsePermissionAudit(pkg, raw)
         val runtime = parsed.permissions.filter { it.runtime }
         if (runtime.isEmpty()) return@withContext PermissionAuditResult.Ok(parsed)

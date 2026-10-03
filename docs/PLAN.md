@@ -17,12 +17,13 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 ## In progress: A4 permissions and AppOps
 
 1. Permission parser for `dumpsys package`. **Done.**
-2. Read-only permission audit in app details. **Done, phone-verified on user and system apps.**
+2. Read-only permission audit in app details. **Done on small apps; large apps (Drive, 128886 bytes) fixed with an on-device numbered filter, awaiting phone re-test.**
 3. Runtime permission parsing and authoritative User 0 read-back. **Done, phone-verified.**
 4. Guarded runtime Grant/Revoke with confirmation and read-back. **Done, phone-verified on a real app.**
 5. AppOps audit parser and explicit set/reset command model. **Done, unit-tested, CI #56 green.**
-6a. Read-only AppOps audit card in App Details (`appops get`, op/mode list, raw output). **Implemented; awaiting CI and phone test on Drive (system) and one user app.**
-6b. Guarded AppOps set/reset with device read-back and honest unsupported results. **Next, after 6a phone output is reviewed.**
+6a. Read-only AppOps audit card in App Details. **Phone-verified on Drive. Follow-up: OEM ops (MIUIOP) shown read-only, duplicate modes shown; awaiting CI and re-test.**
+6b. Uid scope vs package scope. `appops get --uid <pkg>` returns the package output on this ROM; probe `appops get <uid>` next.
+6c. Guarded AppOps set/reset with device read-back and honest unsupported results. **After 6b.**
 
 ## Then
 

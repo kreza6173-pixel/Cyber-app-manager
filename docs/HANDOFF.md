@@ -17,7 +17,7 @@ The old WebUI and shell modules are historical references only. Root and Dhizuku
 
 ## 2. Engineering rules
 
-No INTERNET permission. Commands only through Shizuku UserService and ExecBridge. Package and permission names validated and quoted. Every write read back; APPLIED only when read-back matches. Protected packages refused in the repository, not only hidden in the UI. Snapshots hold package state only. Bulk work is sequential with per-package results. Code and the strings/resources it uses land in one commit. CI proves build and tests; the reference phone proves behaviour. Diagnose CI failures from the actual failing test name and line in the log, never from assumption.
+No INTERNET permission. Commands only through Shizuku UserService and ExecBridge. Package and permission names validated and quoted. Every write read back; APPLIED only when read-back matches. Protected packages refused in the repository, not only hidden in the UI. Snapshots hold package state only. Bulk work is sequential with per-package results. Code and the strings/resources it uses land in one commit. CI proves build and tests; the reference phone proves behaviour. Diagnose CI failures from the actual failing test name and line in the log, never from assumption. Shell output is capped at 64 KiB by ExecBridge: filter large dumps on the device and never rely on full `dumpsys` output.
 
 ## 3. Status
 
@@ -28,7 +28,7 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 | A2 single-package operations | done | Suspend/Unsuspend user and system apps; protected apps show no actions |
 | A3 snapshots, undo, pins, batch | done | phone-verified |
 | Debloat track | done | CI green and owner phone acceptance, including search and cross-manager restore |
-| A4 permissions + AppOps | **in progress** | Permission audit and Grant/Revoke phone-verified. AppOps parser green (CI #56). Read-only AppOps audit card implemented, awaiting CI and phone test. AppOps writes remain |
+| A4 permissions + AppOps | **in progress** | Permission audit and Grant/Revoke phone-verified on small apps. AppOps audit card phone-verified on Drive. Large-app permission audit, OEM ops and duplicate modes fixed in the latest push, awaiting CI and re-test. AppOps writes remain |
 | A5 to A8 | open | |
 | 1.0 release | open | |
 
@@ -44,22 +44,27 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 - Debloat: SAFE-only presets, compact disclaimer (tested on Xiaomi Redmi Note 14 Global ROM; guidance, not a guarantee), preset/package search, Suspend and Remove-for-user, snapshots, read-back reports, Restore for packages removed earlier by another manager.
 - A4 audit: permission list with granted / not granted / unknown states on user and system apps. `WRITE_MEDIA_STORAGE` correctly shows unknown on a user app.
 - A4 Grant/Revoke: `POST_NOTIFICATIONS` grant and revoke both returned APPLIED with matching before/after read-back. The target app stopped after revoke, matching Android process enforcement behavior.
+- A4 AppOps audit card (CI #57 build) on Drive `com.google.android.apps.docs` (system): card rendered below Permissions, op/mode list matched the raw output for standard ops, raw toggle worked, nothing changed.
 
 ## 5. Current checkpoint and remaining path
 
-CI #56 is green with the anchored AppOps parser. The latest push adds the read-only AppOps audit card to App Details.
+Phone findings on Drive with the CI #57 build:
 
-Phone test for this push (owner):
+- Permission card showed `Permission state unavailable on this ROM.` Probe: `dumpsys package com.google.android.apps.docs | wc -c` = 128886 bytes, above the 64 KiB cap, so the audit was rejected as truncated. Earlier tests only used small apps.
+- `MIUIOP(10008): allow` and `MIUIOP(10053): ignore` were silently dropped by the parser.
+- `ACCESS_RESTRICTED_SETTINGS` printed twice (`allow`, then `default`); only the last was shown.
+- `appops get --uid com.google.android.apps.docs` printed exactly the same output as `appops get <pkg>`, so `--uid` with a package name does not separate scopes on this ROM.
 
-1. Open App Details for Drive (system app) and for one normal user app.
-2. Confirm the AppOps card appears below Permissions and lists op/mode pairs, or reports empty/unavailable honestly.
-3. Tap Show raw appops output, copy it, and compare it with the parsed list. Any line Android printed that the list missed or misread is a parser bug; attach the raw output to the report.
-4. Confirm nothing is changed by opening the screen (read-only).
+Latest push fixes the first three. Phone re-test (owner):
 
-After the phone test:
+1. Drive App Details: Permissions card lists permissions (or shows the exact error text if still failing).
+2. AppOps card shows `miuiop(10008)` and `miuiop(10053)` marked `OEM · read-only`, and `access_restricted_settings · default (also reported: allow)`.
+3. Console probe for scope separation: `pm list packages -U com.google.android.apps.docs` to get the uid, then `appops get <that uid number>`. If it prints only the first block (the `Uid mode:` lines), uid and package scopes can be split reliably.
 
-1. Add guarded AppOps set/reset with valid-name and valid-mode checks, protected-app refusal, confirmation, and read-back.
-2. Decide from real output whether uid mode and package mode must be shown as separate scopes (currently the last reported line per op wins).
+After the re-test:
+
+1. Split uid and package scopes if the probe confirms it; otherwise keep the merged view with all reported modes.
+2. Add guarded AppOps set/reset with valid-name and valid-mode checks, protected-app refusal, OEM refusal, confirmation, and read-back.
 3. Close A4 and move to A5: boot receivers, component control, and background AppOps.
 4. Continue A6 notifications/DND, A7 network controls, A8 APK/APKS/XAPK installer, then 1.0 release work.
 
@@ -67,6 +72,9 @@ After the phone test:
 
 - AppOps is not the same thing as a runtime permission. Both are shown as separate sections.
 - AppOps audit keeps the raw `appops get` output visible so ROM-specific formats are checked against reality, not guessed.
+- OEM AppOps (for example `MIUIOP(n)`) are shown but never changeable; `isValidAppOp` rejects them so no set/reset command can target them.
+- When Android prints one op more than once, every reported mode is shown instead of silently keeping one.
+- Permission audit filters `dumpsys package` on the device with `grep -nE`; line-number gaps are turned into blank lines so section parsing matches the full dump.
 - Protected packages remain read-only even when Android exposes operations.
 - No change is reported APPLIED without read-back from Android.
 - APKM is out of scope; installer support is APK, APKS and XAPK only.
@@ -83,18 +91,22 @@ After the phone test:
   - #55 switched to `findAll().lastOrNull()`, which produces identical results on these inputs, so it stayed red on line 27. The earlier note blaming the prefixed-line case for #55 was wrong.
   - Fix (`e587840`, CI #56 green): keep the start anchored and allow only an optional word prefix: `^(?:[A-Za-z ]+:\s*)?op:\s*mode(;detail)?$`.
 - Disable confirmation dialog showed the Suspend warning text (`actionWarning` mapped FREEZE to `warn_suspend`); now uses `warn_freeze`.
+- Full `dumpsys package` for large apps exceeds the 64 KiB cap (Drive: 128886 bytes), so the permission audit failed with a generic message; now filtered on the device and the card shows the exact error text.
+- Parser dropped OEM ops with a numeric suffix (`MIUIOP(10008)`); now parsed as read-only OEM records.
+- Android 16 prints some ops twice (uid scope, then package scope); the UI now lists every reported mode.
 - Android may stop the target process during permission changes; UI warns before Grant/Revoke.
 - Some OEM system packages cannot be removed under Shizuku shell; reported unsupported. Root/Dhizuku remain out of scope.
 
 ## 8. Remaining work, in order
 
-1. Confirm the AppOps audit card push is green, then phone-test it (section 5).
-2. Guarded AppOps set/reset with read-back, and Drive phone test.
-3. A5 boot receivers, component control, background AppOps.
-4. A6 notification listener, DND access, per-app notification mute.
-5. A7 Chain3 per-app network block and netpolicy background data.
-6. A8 installer for APK, APKS and XAPK, OBB placement, extraction, cache trimming, safe shared-storage cleanup. APKM stays out of scope.
-7. 1.0: README including disclaimers, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
+1. Confirm the latest push is green, then phone re-test (section 5), including the uid probe.
+2. Uid/package scope split if the probe allows it.
+3. Guarded AppOps set/reset with read-back, and Drive phone test.
+4. A5 boot receivers, component control, background AppOps.
+5. A6 notification listener, DND access, per-app notification mute.
+6. A7 Chain3 per-app network block and netpolicy background data.
+7. A8 installer for APK, APKS and XAPK, OBB placement, extraction, cache trimming, safe shared-storage cleanup. APKM stays out of scope.
+8. 1.0: README including disclaimers, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
 
 ## 9. Commit trail
 
@@ -105,4 +117,5 @@ After the phone test:
 - `ec27559`, `49a285e`: authoritative runtime read-back.
 - `a85692c`, `822fac8`, `cb24d9e`: AppOps parser foundation and two unsuccessful parser fixes (CI #53 to #55 red).
 - `e587840`: anchored AppOps parser with optional word prefix (CI #56 green).
-- current push: read-only AppOps audit card, raw output toggle, header test, Disable warning fix.
+- `8a6ec66`: read-only AppOps audit card, raw output toggle, header test, Disable warning fix (phone-verified on Drive).
+- current push: on-device permission dump filter, OEM AppOps, duplicate modes, exact permission error text.
