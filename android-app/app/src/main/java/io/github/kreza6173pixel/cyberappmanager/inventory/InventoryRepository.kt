@@ -14,6 +14,8 @@ sealed interface DetailsResult { data class Ok(val details: PackageDetails, val 
 data class ActionResult(val action: AppAction, val verdict: Verdict, val command: String, val output: String, val readBack: String, val snapshotId: String? = null)
 data class RestoreStepResult(val pkg: String, val operation: SnapshotOperation, val verdict: Verdict, val detail: String)
 data class RestoreReport(val planned: Int, val results: List<RestoreStepResult>, val safetySnapshotId: String?)
+data class BatchItemResult(val pkg: String, val verdict: Verdict, val detail: String)
+data class BatchReport(val action: AppAction, val results: List<BatchItemResult>, val snapshotId: String?)
 
 /** Maps a planned snapshot step to the shell action that performs it. */
 fun actionFor(op: SnapshotOperation): AppAction = when (op) {
@@ -23,6 +25,9 @@ fun actionFor(op: SnapshotOperation): AppAction = when (op) {
     SnapshotOperation.SUSPEND -> AppAction.SUSPEND
     SnapshotOperation.UNSUSPEND -> AppAction.UNSUSPEND
 }
+
+/** A package can join a batch only if it is not protected and the action fits its current state. */
+fun eligibleForBatch(e: AppEntry, action: AppAction): Boolean = e.protectedReason == null && action in AppActions.availableFor(e)
 
 class InventoryRepository(private val context: Context, private val bridge: ExecBridge, private val snapshotStore: SnapshotStore = SnapshotStore(context), private val pinStore: PinStore = PinStore(context)) {
     @Volatile var cached: InventoryResult? = null; private set
@@ -53,11 +58,38 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         val entry = entryFor(pkg)
         if (entry == null || action !in AppActions.availableFor(entry)) return@withContext ActionResult(action, Verdict.REFUSED, "", entry?.protectedReason?.let { "protected: $it" } ?: "action not available for this app", "")
         val snapshotId = if (AppActions.needsConfirmation(action)) captureSnapshot("Before ${action.name.lowercase().replace('_', ' ')}") else null
+        execute(pkg, action, snapshotId)
+    }
+
+    /** One snapshot for the whole batch, then one package at a time with read-back. Ineligible packages are reported, never run. */
+    suspend fun performBatch(pkgs: List<String>, action: AppAction): BatchReport = withContext(Dispatchers.IO) {
+        val targets = pkgs.distinct()
+        val eligible = targets.filter { pkg -> entryFor(pkg)?.let { eligibleForBatch(it, action) } == true }.toSet()
+        val snapshotId = if (eligible.isNotEmpty() && action != AppAction.FORCE_STOP) captureSnapshot("Before batch ${action.name.lowercase().replace('_', ' ')}") else null
+        val results = targets.map { pkg ->
+            if (pkg !in eligible) {
+                BatchItemResult(pkg, Verdict.REFUSED, entryFor(pkg)?.protectedReason?.let { "protected: $it" } ?: "not available for current state")
+            } else {
+                val r = execute(pkg, action, snapshotId)
+                BatchItemResult(pkg, r.verdict, r.output)
+            }
+        }
+        BatchReport(action, results, snapshotId)
+    }
+
+    private suspend fun execute(pkg: String, action: AppAction, snapshotId: String?): ActionResult {
         val cmd = AppActions.command(action, pkg)
-        val output = when (val o = bridge.execBlocking(cmd, TIMEOUT_MS)) { is ExecOutcome.Failed -> return@withContext ActionResult(action, Verdict.FAILED, cmd, o.message, "", snapshotId); is ExecOutcome.Completed -> (o.result.stdout + "\n" + o.result.stderr).trim() + "\n(exit " + o.result.exitCode + ")" }
-        val after = details(pkg); val flags: Map<String, String>; val raw: String
+        val output = when (val o = bridge.execBlocking(cmd, TIMEOUT_MS)) {
+            is ExecOutcome.Failed -> return ActionResult(action, Verdict.FAILED, cmd, o.message, "", snapshotId)
+            is ExecOutcome.Completed -> (o.result.stdout + "\n" + o.result.stderr).trim() + "\n(exit " + o.result.exitCode + ")"
+        }
+        val after = details(pkg)
+        val flags: Map<String, String>
+        val raw: String
         when (after) { is DetailsResult.Ok -> { flags = after.details.userFlags; raw = after.raw }; is DetailsResult.Error -> { flags = emptyMap(); raw = after.message } }
-        val verdict = AppActions.verify(action, flags, output); AppActions.stateFrom(flags)?.let { updateState(pkg, it) }; ActionResult(action, verdict, cmd, output, raw, snapshotId)
+        val verdict = AppActions.verify(action, flags, output)
+        AppActions.stateFrom(flags)?.let { updateState(pkg, it) }
+        return ActionResult(action, verdict, cmd, output, raw, snapshotId)
     }
 
     /** Steps needed to return the device to [id]. Protected packages are never planned. */
