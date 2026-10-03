@@ -93,14 +93,17 @@ fun AppDetailScreen(pkg: String, repository: InventoryRepository, connected: Boo
         }
         is PermissionAuditResult.Ok -> {
             val audit = result.audit
+            val shared = result.sharedUser
+            val writable = canChange && shared?.systemUid != true
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(stringResource(R.string.permission_audit_title), style = MaterialTheme.typography.titleSmall)
+                    if (shared != null) Text(stringResource(if (shared.systemUid) R.string.permission_shared_system else R.string.permission_shared_app, shared.name, shared.uid), style = MaterialTheme.typography.labelSmall, color = if (shared.systemUid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                     if (audit.permissions.isEmpty()) Text(stringResource(R.string.permission_audit_empty), style = MaterialTheme.typography.bodySmall)
                     audit.permissions.forEach { p ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             SelectionContainer(Modifier.weight(1f)) { Text("${p.name} · ${permissionState(p.granted)}${kindSuffix(p)}", style = MaterialTheme.typography.bodySmall, color = permissionColor(p.granted)) }
-                            if (canChange && p.changeable) TextButton({ onChange(p) }) { Text(stringResource(if (p.granted == true) R.string.perm_revoke else R.string.perm_grant)) }
+                            if (writable && p.changeable) TextButton({ onChange(p) }) { Text(stringResource(if (p.granted == true) R.string.perm_revoke else R.string.perm_grant)) }
                         }
                     }
                     Text(stringResource(R.string.permission_audit_read_only), style = MaterialTheme.typography.labelSmall)

@@ -11,7 +11,7 @@ import java.util.UUID
 
 sealed interface InventoryResult { data class Ok(val entries: List<AppEntry>, val counts: InventoryCounts) : InventoryResult; data class Error(val message: String) : InventoryResult }
 sealed interface DetailsResult { data class Ok(val details: PackageDetails, val raw: String) : DetailsResult; data class Error(val message: String) : DetailsResult }
-sealed interface PermissionAuditResult { data class Ok(val audit: PermissionAudit) : PermissionAuditResult; data class Error(val message: String) : PermissionAuditResult }
+sealed interface PermissionAuditResult { data class Ok(val audit: PermissionAudit, val sharedUser: SharedUserInfo? = null) : PermissionAuditResult; data class Error(val message: String) : PermissionAuditResult }
 sealed interface AppOpsAuditResult { data class Ok(val audit: AppOpsAudit, val raw: String) : AppOpsAuditResult; data class Error(val message: String) : AppOpsAuditResult }
 data class ActionResult(val action: AppAction, val verdict: Verdict, val command: String, val output: String, val readBack: String, val snapshotId: String? = null)
 data class PermissionChangeResult(val pkg: String, val permission: String, val grant: Boolean, val verdict: Verdict, val command: String, val output: String, val before: Boolean?, val after: Boolean?)
@@ -47,14 +47,20 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         when (val r = shell("dumpsys package ${ShellQuoting.quote(pkg)} | grep -E ${ShellQuoting.quote(DETAIL_PATTERN)} | head -n 20", true)) { is ShellResult.Ok -> { val p = parsePackageDetails(r.stdout); AppActions.stateFrom(p.userFlags)?.let { updateState(pkg, it) }; DetailsResult.Ok(p, r.stdout.trim()) }; is ShellResult.Bad -> DetailsResult.Error(r.message) }
     }
 
-    /** Only the active Packages: block is read (fits the 64 KiB cap); pm check-permission is the authority for runtime state. */
+    /**
+     * Reads the active Packages: block (fits the 64 KiB cap). For shared-uid packages the Shared users: block,
+     * which holds their runtime permissions, is read in a second call; if that call fails the Packages-only
+     * result is kept. pm check-permission is the authority for runtime state.
+     */
     suspend fun permissionAudit(pkg: String): PermissionAuditResult = withContext(Dispatchers.IO) {
         if (!isValidPackageName(pkg)) return@withContext PermissionAuditResult.Error("invalid package name: $pkg")
         val q = ShellQuoting.quote(pkg)
         val raw = when (val r = shell(permissionDumpCommand(q), false)) { is ShellResult.Ok -> r.stdout; is ShellResult.Bad -> return@withContext PermissionAuditResult.Error(r.message) }
-        val parsed = parsePermissionAudit(pkg, raw)
+        val shared = sharedUserOf(raw)
+        val sharedRaw = if (shared != null) (shell(sharedUsersDumpCommand(q), false) as? ShellResult.Ok)?.stdout else null
+        val parsed = parsePermissionAudit(pkg, if (sharedRaw != null) raw + "\n\n" + sharedRaw else raw)
         val runtime = parsed.permissions.filter { it.runtime }
-        if (runtime.isEmpty()) return@withContext PermissionAuditResult.Ok(parsed)
+        if (runtime.isEmpty()) return@withContext PermissionAuditResult.Ok(parsed, shared)
         val checks = runtime.joinToString("; ") { p -> "printf '%s\\n' ${ShellQuoting.quote(p.name)}; pm check-permission $q ${ShellQuoting.quote(p.name)} 0" }
         val lines = when (val r = shell(checks, true)) { is ShellResult.Ok -> r.stdout.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList(); is ShellResult.Bad -> emptyList() }
         val checked = buildMap<String, Boolean?> {
@@ -63,7 +69,7 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
                 put(p.name, when (answer?.lowercase()) { "granted" -> true; "denied" -> false; else -> null })
             }
         }
-        PermissionAuditResult.Ok(parsed.copy(permissions = parsed.permissions.map { p -> if (p.runtime && checked[p.name] != null) p.copy(granted = checked[p.name]) else p }))
+        PermissionAuditResult.Ok(parsed.copy(permissions = parsed.permissions.map { p -> if (p.runtime && checked[p.name] != null) p.copy(granted = checked[p.name]) else p }), shared)
     }
 
     /**
@@ -89,7 +95,9 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         fun refused(reason: String, before: Boolean? = null) = PermissionChangeResult(pkg, permission, grant, Verdict.REFUSED, "", reason, before, before)
         if (!isValidPackageName(pkg) || !isValidPermissionName(permission)) return@withContext refused("invalid package or permission name")
         val e = entryFor(pkg) ?: return@withContext refused("inventory not loaded"); e.protectedReason?.let { return@withContext refused("protected: $it") }
-        val before = (permissionAudit(pkg) as? PermissionAuditResult.Ok)?.audit?.permissions?.firstOrNull { it.name == permission } ?: return@withContext refused("permission state unavailable")
+        val beforeAudit = permissionAudit(pkg) as? PermissionAuditResult.Ok ?: return@withContext refused("permission state unavailable")
+        beforeAudit.sharedUser?.takeIf { it.systemUid }?.let { return@withContext refused("shared system uid ${it.name}/${it.uid}: a change would apply to every package in it") }
+        val before = beforeAudit.audit.permissions.firstOrNull { it.name == permission } ?: return@withContext refused("permission state unavailable")
         if (!before.changeable) return@withContext refused(if (before.fixed) "fixed by system or policy" else "not a changeable runtime permission", before.granted)
         if (before.granted == grant) return@withContext refused("already in the requested state", before.granted)
         val cmd = (if (grant) "pm grant" else "pm revoke") + " --user 0 ${ShellQuoting.quote(pkg)} ${ShellQuoting.quote(permission)}"

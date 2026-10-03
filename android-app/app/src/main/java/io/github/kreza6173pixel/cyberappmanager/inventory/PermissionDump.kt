@@ -13,3 +13,22 @@ package io.github.kreza6173pixel.cyberappmanager.inventory
  * from Packages: to EOF was 35719 bytes.
  */
 fun permissionDumpCommand(quotedPkg: String): String = "dumpsys package $quotedPkg | sed -n '/^Packages:/,/^[A-Z]/p'"
+
+/**
+ * Packages in a shared uid keep their runtime permissions in the `Shared users:` block, not in
+ * `Packages:` (com.miui.securitycenter, android.uid.system/1000: `runtime permissions:` at line 4021,
+ * inside Shared users: 3501..4049). Read only when [sharedUserOf] finds a shared user.
+ */
+fun sharedUsersDumpCommand(quotedPkg: String): String = "dumpsys package $quotedPkg | sed -n '/^Shared users:/,/^[A-Z]/p'"
+
+/** A shared uid. Runtime permissions belong to the whole uid, so a change applies to every package in it. */
+data class SharedUserInfo(val name: String, val uid: Int) {
+    /** System range (for example android.uid.system/1000). Permission writes are refused for these. */
+    val systemUid: Boolean get() = uid < 10000
+}
+
+private val SHARED_USER = Regex("sharedUser=SharedUserSetting\\{\\S+ ([^/\\s]+)/(\\d+)\\}")
+
+/** First shared user in the Packages block, for example `sharedUser=SharedUserSetting{cfee48 android.uid.system/1000}`. */
+fun sharedUserOf(packagesBlock: String): SharedUserInfo? =
+    SHARED_USER.find(packagesBlock)?.let { m -> m.groupValues[2].toIntOrNull()?.let { SharedUserInfo(m.groupValues[1], it) } }
