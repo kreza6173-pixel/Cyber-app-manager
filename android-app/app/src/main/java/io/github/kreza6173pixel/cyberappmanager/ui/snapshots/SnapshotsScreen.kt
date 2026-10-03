@@ -29,66 +29,23 @@ import java.util.Date
 
 @Composable
 fun SnapshotsScreen(repository: InventoryRepository, modifier: Modifier = Modifier) {
-    var snapshots by remember { mutableStateOf(repository.snapshots()) }
+    var snapshots by remember { mutableStateOf(emptyList<Snapshot>()) }
     var selected by remember { mutableStateOf<Snapshot?>(null) }
     var deleteTarget by remember { mutableStateOf<Snapshot?>(null) }
+    var refresh by remember { mutableStateOf(0) }
+    LaunchedEffect(refresh) { snapshots = repository.snapshots() }
 
     deleteTarget?.let { target ->
-        AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            title = { Text(stringResource(R.string.snapshot_delete_title)) },
-            text = { Text(stringResource(R.string.snapshot_delete_warning, target.name)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    repository.deleteSnapshot(target.id)
-                    snapshots = repository.snapshots()
-                    if (selected?.id == target.id) selected = null
-                    deleteTarget = null
-                }) { Text(stringResource(R.string.action_delete)) }
-            },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.action_cancel)) } },
-        )
+        AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text(stringResource(R.string.snapshot_delete_title)) }, text = { Text(stringResource(R.string.snapshot_delete_warning, target.name)) }, confirmButton = { TextButton(onClick = { repository.deleteSnapshot(target.id); snapshots = repository.snapshots(); if (selected?.id == target.id) selected = null; deleteTarget = null }) { Text(stringResource(R.string.action_delete)) } }, dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.action_cancel)) } })
     }
 
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.snapshots_title), style = MaterialTheme.typography.headlineSmall)
-        if (snapshots.isEmpty()) {
-            Text(stringResource(R.string.snapshots_empty))
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(snapshots, key = { it.id }) { snapshot ->
-                    Card(onClick = { selected = snapshot }, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(snapshot.name, style = MaterialTheme.typography.titleMedium)
-                            Text(stringResource(R.string.snapshot_meta, snapshot.entries.size, formatDate(snapshot.createdAtMs)))
-                            OutlinedButton(onClick = { deleteTarget = snapshot }) { Text(stringResource(R.string.action_delete)) }
-                        }
-                    }
-                }
-            }
-        }
+        OutlinedButton(onClick = { refresh++ }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.action_refresh)) }
+        if (snapshots.isEmpty()) Text(stringResource(R.string.snapshots_empty)) else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(snapshots, key = { it.id }) { snapshot -> Card(onClick = { selected = snapshot }, modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text(snapshot.name, style = MaterialTheme.typography.titleMedium); Text(stringResource(R.string.snapshot_meta, snapshot.entries.size, formatDate(snapshot.createdAtMs))); OutlinedButton(onClick = { deleteTarget = snapshot }) { Text(stringResource(R.string.action_delete)) } } } } }
     }
 
-    selected?.let { snapshot ->
-        val detailText = snapshot.entries.joinToString("\n") { "${it.pkg} · ${it.state.name.lowercase()}" }
-        AlertDialog(
-            onDismissRequest = { selected = null },
-            title = { Text(snapshot.name) },
-            text = {
-                SelectionContainer {
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 480.dp)
-                            .verticalScroll(rememberScrollState()),
-                    ) {
-                        Text(detailText)
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { selected = null }) { Text(stringResource(R.string.action_close)) } },
-        )
-    }
+    selected?.let { snapshot -> val detailText = snapshot.entries.joinToString("\n") { "${it.pkg} · ${it.state.name.lowercase()}" }; AlertDialog(onDismissRequest = { selected = null }, title = { Text(snapshot.name) }, text = { SelectionContainer { Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState())) { Text(detailText) } } }, confirmButton = { TextButton(onClick = { selected = null }) { Text(stringResource(R.string.action_close)) } }) }
 }
 
 private fun formatDate(timeMs: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(timeMs))
