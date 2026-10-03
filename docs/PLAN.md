@@ -1,90 +1,40 @@
 # VOID // APPS: roadmap and remaining work
 
-Updated: 2026-10-03. The project is a native Kotlin + Compose + Shizuku UserService app. The original idea and all completed work are recorded in `docs/HANDOFF.md`.
+Updated: 2026-10-03. See `docs/HANDOFF.md` for the complete narrative and evidence.
 
 ## Product goal
 
-Provide a safe, reversible, local package manager for Android that can inspect and manage user and system packages without root when Shizuku is sufficient, while accurately reporting when Dhizuku or root is required. The app must never pretend an operation succeeded.
+A safe, reversible, local Android package manager built with Kotlin, Compose, and Shizuku UserService. It manages packages without pretending a shell command succeeded when the ROM rejected it. Root and Dhizuku are outside this project; Shizuku is the only execution path.
 
-## Completed baseline
+## Complete
 
-- M0 core, Shizuku state machine, UserService/AIDL, ExecBridge, console, CI, and debug build.
-- A1 inventory, protected guard, parser coverage, package details, and real-device counts.
-- A2 Suspend/Unsuspend, Disable/Enable, Force stop, Remove/Restore, Clear data verdicts, and read-back.
-- A3 Snapshot model, durable JSON storage, Snapshot UI, delete/detail/refresh, scroll/select, Restore/Undo, per-package read-back, safety snapshots, and JSON import/export.
+- M0 core, Shizuku connection, UserService/AIDL, ExecBridge, console, CI, debug build.
+- A1 inventory, protected guard, parsers, package details, real-device counts.
+- A2 Suspend/Unsuspend, Disable/Enable, Force stop, Remove/Restore, Clear data verdicts, read-back.
+- A3 Snapshot model, durable storage, UI, delete/detail/refresh, scroll/select, Restore/Undo, safety snapshots, per-package read-back, JSON Import/Export.
 
-## Milestones
+## Remaining milestones
 
-### A3: finish the recovery layer
+### A3 finish
 
-Status: mostly complete. Remaining:
-
-- Pins UI: pin/unpin in app details and list, display pinned state, safe re-apply only for valid non-protected packages.
-- Batch operation UI: select packages, preview exact targets, snapshot before execution, process sequentially, show per-package results.
-- Add pure tests for storage round-trip, malformed JSON, duplicate merge, ordering/cap, import/export, and restore result mapping.
-
-Acceptance: select three non-protected apps, execute a batch state change, see one pre-batch snapshot and three individual results, then restore them through Undo.
-
-### A4: permissions and special access
-
-- Runtime permission inventory per app.
-- Grant/revoke through the supported Package Manager path.
-- AppOps list/read/write for special access, with capability checks.
-- Read back every change and distinguish unsupported from failed.
-
-### A5: background and autostart
-
-- Boot receiver/component inventory and guarded enable/disable.
-- RUN_IN_BACKGROUND and RUN_ANY_IN_BACKGROUND AppOps.
-- Probe Xiaomi/HyperOS behaviour before claiming support.
-
-### A6: notifications
-
-- Notification listener access inventory.
-- DND access inventory.
-- Per-app notification mute where the ROM supports it.
-- Exact read-back and settings parity.
-
-### A7: network controls
-
-- Chain3 per-app network blocking.
-- Background-data controls through netpolicy.
-- No fake DNS filtering, iptables shortcut, or untested root path.
-- Prove block and unblock on the reference device.
-
-### A8: install and cleanup
-
-- Session install for APK/APKS/XAPK/APKM.
-- OBB placement and extraction.
-- Cache trimming and carefully scoped shared-storage scans.
-- Report shell limitations rather than claiming root-only cleanup.
+Pins UI, safe re-apply, batch operation UI, one pre-batch snapshot, sequential per-package results, pure storage/import/restore tests, and final batch acceptance test.
 
 ### Debloat track
 
-Debloat is a product track built on top of A3, not a blind delete button:
+Port the legacy knowledge base and presets; add safe/caution/core metadata and OEM information; review exact package targets before applying; refuse protected packages including imported presets; snapshot before batch; run sequentially with read-back; report unsupported where Shizuku cannot perform the OEM operation. Calculator, compass, notes, and similar Xiaomi/HyperOS packages must be probed before being marked supported.
 
-1. Port the legacy knowledge base and presets.
-2. Add safe/caution/core risk classification and OEM/package metadata.
-3. Add a review screen with exact package list, current state, capability, and proposed operation.
-4. Refuse protected packages everywhere, including imported presets.
-5. Snapshot before a batch and provide per-package read-back.
-6. Report `unsupported` when the ROM requires Dhizuku or root for removal.
-7. Test calculator, compass, notes, and other OEM examples on Xiaomi/HyperOS before marking them supported.
+### A4 to A8
+
+- A4: runtime permission audit, grant/revoke, AppOps special access.
+- A5: boot receivers, component control, background AppOps.
+- A6: notification listener, DND access, per-app notification mute.
+- A7: Chain3 per-app network block and netpolicy background-data controls.
+- A8: APK/APKS/XAPK/APKM session install, OBB placement, extraction, cache trimming, safe shared-storage cleanup.
 
 ### 1.0 release
 
-- Rewrite README for native VOID reality and remove legacy claims.
-- About screen, final icon/branding, fastlane metadata, and release notes.
-- Ensure `.github/workflows/ci.yml` is the active workflow.
-- Build and verify signed release APK using CI secrets only.
-- Install and smoke-test on the Redmi/Xiaomi reference phone with Shizuku uid 2000.
-- Update HANDOFF and PLAN with verified results.
-- Merge `native-app-v0` into `main` only after CI and device acceptance are green.
+Rewrite README for native VOID reality; About/icon/branding/fastlane/release notes; verify active CI; signed release from CI secrets; final Redmi/Xiaomi smoke test; update docs; merge `native-app-v0` into `main` only after all gates pass.
 
-## Engineering gates
+## Gates
 
-- No INTERNET permission.
-- No destructive batch without preview and snapshot.
-- No claim of support without a real-device probe.
-- No protected-package bypass.
-- No release claim while CI or device acceptance is red.
+No INTERNET permission. No protected bypass. No destructive batch without preview and snapshot. No support claim without device probe. No release claim while CI or device acceptance is red.
