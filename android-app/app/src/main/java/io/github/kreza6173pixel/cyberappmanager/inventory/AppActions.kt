@@ -2,7 +2,7 @@ package io.github.kreza6173pixel.cyberappmanager.inventory
 
 import io.github.kreza6173pixel.cyberappmanager.exec.ShellQuoting
 
-enum class AppAction { SUSPEND, UNSUSPEND, UNFREEZE, FORCE_STOP, REMOVE, RESTORE, CLEAR_DATA }
+enum class AppAction { SUSPEND, UNSUSPEND, FREEZE, UNFREEZE, FORCE_STOP, REMOVE, RESTORE, CLEAR_DATA }
 enum class Verdict { APPLIED, NOT_APPLIED, UNVERIFIABLE, REFUSED, FAILED }
 
 object AppActions {
@@ -16,7 +16,7 @@ object AppActions {
         }
     }
 
-    fun needsConfirmation(a: AppAction): Boolean = a == AppAction.SUSPEND || a == AppAction.REMOVE || a == AppAction.CLEAR_DATA
+    fun needsConfirmation(a: AppAction): Boolean = a == AppAction.SUSPEND || a == AppAction.FREEZE || a == AppAction.REMOVE || a == AppAction.CLEAR_DATA
 
     fun command(a: AppAction, pkg: String): String {
         require(isValidPackageName(pkg)) { "invalid package name" }
@@ -24,6 +24,7 @@ object AppActions {
         return when (a) {
             AppAction.SUSPEND -> "pm suspend $q"
             AppAction.UNSUSPEND -> "pm unsuspend $q"
+            AppAction.FREEZE -> "pm disable-user --user 0 $q"
             AppAction.UNFREEZE -> "pm enable --user 0 $q"
             AppAction.FORCE_STOP -> "am force-stop --user 0 $q"
             AppAction.REMOVE -> "pm uninstall -k --user 0 $q"
@@ -39,6 +40,7 @@ object AppActions {
         val ok = when (a) {
             AppAction.SUSPEND -> after["suspended"] == "true"
             AppAction.UNSUSPEND -> after["suspended"] == "false"
+            AppAction.FREEZE -> enabled == "2" || enabled == "3"
             AppAction.UNFREEZE -> enabled == "0" || enabled == "1"
             AppAction.FORCE_STOP -> after["stopped"] == "true"
             AppAction.REMOVE -> after["installed"] == "false"
