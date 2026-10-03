@@ -7,14 +7,23 @@ import io.github.kreza6173pixel.cyberappmanager.exec.ExecOutcome
 import io.github.kreza6173pixel.cyberappmanager.exec.ShellQuoting
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 sealed interface InventoryResult { data class Ok(val entries: List<AppEntry>, val counts: InventoryCounts) : InventoryResult; data class Error(val message: String) : InventoryResult }
 sealed interface DetailsResult { data class Ok(val details: PackageDetails, val raw: String) : DetailsResult; data class Error(val message: String) : DetailsResult }
-data class ActionResult(val action: AppAction, val verdict: Verdict, val command: String, val output: String, val readBack: String)
+data class ActionResult(val action: AppAction, val verdict: Verdict, val command: String, val output: String, val readBack: String, val snapshotId: String? = null)
 
-class InventoryRepository(private val context: Context, private val bridge: ExecBridge) {
+class InventoryRepository(
+    private val context: Context,
+    private val bridge: ExecBridge,
+    private val snapshotStore: SnapshotStore = SnapshotStore(context),
+    private val pinStore: PinStore = PinStore(context),
+) {
     @Volatile var cached: InventoryResult? = null; private set
     fun entryFor(pkg: String): AppEntry? = (cached as? InventoryResult.Ok)?.entries?.firstOrNull { it.pkg == pkg }
+    fun snapshots(): List<Snapshot> = snapshotStore.list()
+    fun pins(): Set<String> = pinStore.list()
+    fun setPinned(pkg: String, pinned: Boolean): Set<String> = pinStore.set(pkg, pinned)
 
     suspend fun load(): InventoryResult = withContext(Dispatchers.IO) {
         val outputs = ArrayList<String>(LIST_COMMANDS.size)
@@ -41,15 +50,23 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
     suspend fun perform(pkg: String, action: AppAction): ActionResult = withContext(Dispatchers.IO) {
         val entry = entryFor(pkg)
         if (entry == null || action !in AppActions.availableFor(entry)) return@withContext ActionResult(action, Verdict.REFUSED, "", entry?.protectedReason?.let { "protected: $it" } ?: "action not available for this app", "")
+        val snapshotId = if (AppActions.needsConfirmation(action)) captureSnapshot("Before ${action.name.lowercase().replace('_', ' ')}") else null
         val cmd = AppActions.command(action, pkg)
         val output = when (val o = bridge.execBlocking(cmd, TIMEOUT_MS)) {
-            is ExecOutcome.Failed -> return@withContext ActionResult(action, Verdict.FAILED, cmd, o.message, "")
+            is ExecOutcome.Failed -> return@withContext ActionResult(action, Verdict.FAILED, cmd, o.message, "", snapshotId)
             is ExecOutcome.Completed -> (o.result.stdout + "\n" + o.result.stderr).trim() + "\n(exit " + o.result.exitCode + ")"
         }
         val after = details(pkg); val flags: Map<String, String>; val raw: String
         when (after) { is DetailsResult.Ok -> { flags = after.details.userFlags; raw = after.raw }; is DetailsResult.Error -> { flags = emptyMap(); raw = after.message } }
         val verdict = AppActions.verify(action, flags, output); AppActions.stateFrom(flags)?.let { updateState(pkg, it) }
-        ActionResult(action, verdict, cmd, output, raw)
+        ActionResult(action, verdict, cmd, output, raw, snapshotId)
+    }
+
+    private fun captureSnapshot(name: String): String? {
+        val current = (cached as? InventoryResult.Ok)?.entries ?: return null
+        val id = UUID.randomUUID().toString()
+        snapshotStore.put(snapshotOf(id, name, System.currentTimeMillis(), current))
+        return id
     }
 
     private fun updateState(pkg: String, state: AppState) { val ok = cached as? InventoryResult.Ok ?: return; val entries = ok.entries.map { if (it.pkg == pkg) it.copy(state = state) else it }; cached = InventoryResult.Ok(entries, countsOf(entries)) }
