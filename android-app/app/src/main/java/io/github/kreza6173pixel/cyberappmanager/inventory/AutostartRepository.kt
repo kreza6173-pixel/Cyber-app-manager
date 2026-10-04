@@ -16,3 +16,14 @@ class AutostartRepository(private val bridge: ExecBridge) {
         }
     }
 }
+
+/** Keeps the screen dependent on the repository, not on a second bridge instance. */
+suspend fun InventoryRepository.autostartAudit(pkg: String): Result<AutostartAudit> =
+    AutostartRepository(bridgeForReadOnlyAudit()).audit(pkg)
+
+/** Internal bridge access for read-only feature repositories. */
+fun InventoryRepository.bridgeForReadOnlyAudit(): ExecBridge {
+    val field = InventoryRepository::class.java.getDeclaredField("bridge")
+    field.isAccessible = true
+    return field.get(this) as ExecBridge
+}
