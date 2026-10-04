@@ -5,23 +5,70 @@ Branch: `native-app-v0`
 Application ID: `io.github.kreza6173pixel.voidapps`
 Reference device: Xiaomi Redmi Note 14, HyperOS Global ROM, Android 16, SDK 36, Shizuku shell uid 2000.
 
+This is the durable record of product decisions, engineering rules, phone evidence and remaining work.
+
+## Product idea
+
+VOID // APPS is a local Kotlin + Jetpack Compose Android package manager using Shizuku UserService/AIDL. It has no INTERNET permission, refuses protected packages, performs reversible operations and reads state back before reporting success.
+
+## Engineering rules
+
+No INTERNET permission. Commands only through Shizuku and ExecBridge. Validate and quote package and permission names. Every write is read back; APPLIED means the new state matches. Protected packages are refused in the repository. Code and resources land together. Diagnose CI failures from logs. ExecBridge output is capped at 64 KiB, so shell filters are measured on the phone before being relied on and extra reads are non-fatal. A write control is shown only after a phone probe proves it works.
+
 ## Status
 
-A4 permissions and AppOps is done on the reference phone. System Self-check passed 311/311 with no permission errors, AppOps errors, unsplit output or unknown lines; the HyperOS `MIUIOP(10017): ask` mode is parsed read-only for user apps.
+| Step | Status | Evidence |
+|---|---|---|
+| M0 core | done | Shizuku READY, uid 2000 |
+| A1 inventory + guard + details | done | Counts match pm on reference phone |
+| A2 package operations | done | Suspend, remove, restore and read-back phone-verified |
+| A3 snapshots, undo, pins, batch | done | Phone-verified |
+| Debloat | done | CI green and phone acceptance |
+| A4 permissions + AppOps | done on reference phone | Self-check system 311/311 clean; user 463/463; HyperOS ask parsed read-only |
+| A5 to A8 | open | |
+| 1.0 release | open | |
 
-A5 has started with a read-only parser and probe foundation. It follows the proven `void-autostart` module: boot-family receiver discovery from `dumpsys package`, plus `RUN_IN_BACKGROUND` and `RUN_ANY_IN_BACKGROUND` state. No A5 write control is exposed yet. Writes will require a device probe and fresh read-back, because this ROM previously returned exit 0 while silently keeping AppOps modes.
+## Acceptance record
 
-## A5 source evidence
+- Permission Grant/Revoke round trips were verified on Drive, Meet, Play Store and Acode.
+- Shared system uid `android.uid.system/1000` is read-only and refuses writes.
+- AppOps uid/package scope split was verified on Drive, securitycenter and Acode.
+- Package-scope AppOps changes work only when no non-default uid mode overrides them. Uid-scope changes are disabled after the ROM silently kept CAMERA and CALL_PHONE changes.
+- `MIUIOP(n)` is read-only. HyperOS `MIUIOP(10017): ask` is now a recognised read-only mode.
+- Self-check system group: 311/311, no permission errors, cap hits, AppOps errors, unsplit output or unknown lines.
 
-- Boot receiver source commands: `dumpsys package <pkg>`, then `pm disable <pkg>/<component>` or `pm enable <pkg>/<component>`.
-- Background source commands: `cmd appops get <pkg> RUN_IN_BACKGROUND`, `cmd appops get <pkg> RUN_ANY_IN_BACKGROUND`, then `cmd appops set`.
-- The old module's broad background denial can affect notifications and all background execution, so receiver-level control stays the preferred surgical option.
+## Current checkpoint
 
-## Remaining
+A4 is closed on the reference phone. A5 has started with a read-only parser and probe foundation in commit `0615a610` (duplicate test path cleaned in `92b31b0`). It follows the proven `kreza6173-pixel/void-autostart` module:
 
-1. Run CI for the A5 parser foundation.
-2. Add the read-only A5 UI and phone probe.
-3. Add guarded component/background writes only where read-back proves they work.
-4. A6 notifications and DND, A7 Chain3/netpolicy, A8 APK/APKS/XAPK installer, then 1.0 release.
+- Boot receiver discovery from `dumpsys package`, looking for `BOOT_COMPLETED`, `LOCKED_BOOT_COMPLETED`, `QUICKBOOT_POWERON` and `MY_PACKAGE_REPLACED`.
+- Background state uses `RUN_IN_BACKGROUND` and `RUN_ANY_IN_BACKGROUND` AppOps.
+- The new parser preserves raw output and reports unknown ROM shapes rather than guessing.
+- No A5 write control is exposed yet. Component and AppOps writes need a fresh read-back probe because this ROM previously returned exit 0 while silently keeping some changes.
 
-No INTERNET permission, protected-package bypass, or APKM support is being added.
+The old source commands are `pm disable <package>/<component>`, `pm enable <package>/<component>` and `cmd appops set`, but they are not yet trusted by VOID until verified on this phone.
+
+## Remaining work
+
+1. A5 read-only UI and phone probe, then guarded component/background writes where read-back proves them.
+2. A6 notification mute, notification-listener access and DND access, based on `void-pulse`.
+3. A7 Chain3 per-app network block and `netpolicy`, based on `VOID-WALL`.
+4. A8 streamed APK/APKS/XAPK installer based on `pulse-install`; APKM stays out of scope.
+5. 1.0 README, About, icon, fastlane, signed release, smoke test and merge to `main`.
+
+## Safety decisions
+
+AppOps is separate from runtime permissions. OEM operations are shown but never changed. Self-check never writes. ROM-specific differences are expected and supported through issue reports. `com.miui.securitycenter` stays unprotected, but system-uid writes are refused. Root, Dhizuku and APKM are out of scope.
+
+## Commit trail
+
+- `e587840`: anchored AppOps parser, CI #56 green.
+- `9055b5a`: measured permission audit sections.
+- `0d4cd24`: shared-uid permissions.
+- `dc3ec81`, `090c376`, `873a114`: guarded AppOps changes and phone findings.
+- `ba860ea`: Self-check, ROM report template and system-uid refusal.
+- `d8f885a`: HyperOS `ask` mode read-only.
+- `54b9703`: permission-section extractor; system Self-check 311/311 clean.
+- `077746ab`: A5/A6 source-module evidence.
+- `0615a610`: A5 parser and read-only repository foundation.
+- `92b31b0`: duplicate test path cleanup.
