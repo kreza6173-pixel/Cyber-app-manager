@@ -28,7 +28,7 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 | A2 single-package operations | done | Suspend/Unsuspend user and system apps; protected apps show no actions. Suspend and Remove-for-user re-tested 2026-10-04 |
 | A3 snapshots, undo, pins, batch | done | phone-verified |
 | Debloat track | done | CI green and owner phone acceptance |
-| A4 permissions + AppOps | **Self-check fix in progress** | AppOps and permission writes phone-verified; Self-check found HyperOS `MIUIOP(10017): ask` (supported in `d8f885a`) and two permission dumps over the 64 KiB cap (measured in `dumpsys`: android 108563 bytes, GMS 83925 bytes) |
+| A4 permissions + AppOps | **done on the reference phone** | Self-check: system 311/311 clean after the section extractor; user 463/463 had HyperOS `MIUIOP(10017): ask`, now parsed read-only |
 | A5 to A8 | open | |
 | 1.0 release | open | |
 
@@ -43,21 +43,29 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 - Shared uid (`0d4cd24`): securitycenter shows `Shared system uid android.uid.system (1000)`, dangerous permissions as `granted · runtime · fixed`, no Grant/Revoke. Shared users block 37361 bytes.
 - AppOps change, package scope: Acode `run_any_in_background` and `read_clipboard` allow to ignore APPLIED; Drive `wake_lock` allow to ignore and back APPLIED.
 - `873a114` check: on Acode, `accept_handover` and `camera` show no Change button; package ops without a uid mode still change both ways.
-- Self-check system group: 311/311 checked; only `android` and `com.google.android.gms` hit the permission output cap. Self-check user group: 463/463 checked; 1 package had no permission state and 449 packages printed HyperOS `MIUIOP(10017): ask` until `d8f885a` made that mode read-only.
+- Self-check system group: 311/311 checked; no permission, AppOps or parser issues after the extractor fix.
 
 ## 5. Current checkpoint and remaining path
 
-Permission dump fix (`d8f885a` follow-up):
+A4 is closed on the reference phone. The next implementation work starts from two already-tested modules in the same workspace:
 
-- Phone measurements showed the active Packages block itself was too large: `android` 108563 bytes and `com.google.android.gms` 83925 bytes.
-- The large sections are declared permissions, requested permissions, install permissions, overlay paths, libraries and component lists. The audit only needs requested/install/runtime permission state plus the shared-user marker.
-- The new extractor keeps only those sections before ExecBridge, rather than adding an unmeasured byte cutoff. It preserves the shared-user second read.
+- A5 source: `kreza6173-pixel/void-autostart`. Boot receiver discovery is based on `dumpsys package <pkg>` and boot-family actions (`BOOT_COMPLETED`, `LOCKED_BOOT_COMPLETED`, `QUICKBOOT_POWERON`, `MY_PACKAGE_REPLACED`). Component writes use `pm disable <pkg>/<component>` and `pm enable <pkg>/<component>`. Background execution reads use `cmd appops get <pkg> RUN_IN_BACKGROUND` and `RUN_ANY_IN_BACKGROUND`; writes use `cmd appops set`.
+- A6 source: `kreza6173-pixel/void-pulse`. Per-app notification mute uses `pm revoke/grant <pkg> android.permission.POST_NOTIFICATIONS` plus `cmd appops set ... POST_NOTIFICATIONS deny/allow`. Listener access uses `cmd notification allow_listener/disallow_listener <pkg>/<service>`. DND access uses `cmd notification allow_dnd/disallow_dnd <pkg>`. The module explicitly treats these as separate controls and does not claim a generic autostart switch.
+
+Porting rules:
+
+1. Read-only scanner first, with raw output and ROM-specific unknowns preserved.
+2. One component or one AppOp at a time, protected-package guard, explicit warning for broad background execution.
+3. Every write gets a fresh read-back; no `exit 0` equals APPLIED.
+4. Snapshot only after the read-only probe demonstrates the command works on this phone.
 
 Next:
 
-1. CI green for this extractor, then rerun Self-check on System and confirm `android` / GMS are no longer cap errors.
-2. Rerun User only if you want to confirm the `ask` count is zero; then close A4.
-3. A5: boot receivers, component control, background AppOps.
+1. A5 boot receiver/component model and scanner.
+2. A5 guarded component enable/disable and background AppOps read/write.
+3. A6 notification, listener and DND access audit and controls.
+4. A7 Chain 3 / netpolicy from `VOID-WALL`.
+5. A8 streamed installer from `pulse-install`, excluding APKM.
 
 ## 6. Design and safety decisions
 
@@ -85,19 +93,17 @@ Next:
 - AppOps change offered where Android silently ignores it; restricted in `090c376`, `873a114` and `ba860ea` (system uid).
 - `ba860ea` commit message mentions docs but did not include them; docs follow-up completed it.
 - Self-check found HyperOS `ask` mode; supported as read-only in `d8f885a`.
-- Self-check measured two permission dumps over the cap; this commit replaces the broad block read with a section extractor.
+- Self-check measured two permission dumps over the cap; section extractor fixed it and system self-check passed 311/311.
 - Android may stop the target process during permission changes; UI warns.
 - Some OEM system packages cannot be removed under Shizuku shell; reported unsupported.
 
 ## 8. Remaining work, in order
 
-1. CI green for the permission extractor, then system Self-check rerun.
-2. Close A4 after the rerun.
-3. A5 boot receivers, component control, background AppOps.
-4. A6 notification listener, DND access, per-app notification mute.
-5. A7 Chain3 per-app network block and netpolicy background data.
-6. A8 installer for APK, APKS and XAPK. APKM stays out of scope.
-7. 1.0: README, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
+1. A5 boot receivers, component control, background AppOps.
+2. A6 notification listener, DND access, per-app notification mute.
+3. A7 Chain3 per-app network block and netpolicy.
+4. A8 installer for APK, APKS and XAPK. APKM stays out of scope.
+5. 1.0: README, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
 
 ## 9. Commit trail
 
@@ -115,4 +121,5 @@ Next:
 - `873a114`: uid scope disabled, Change shown only where it works (phone-verified).
 - `ba860ea`: Self-check, ROM report template, system-uid AppOps refusal.
 - `d8f885a`: HyperOS `ask` AppOps mode shown read-only.
-- current push: measured permission-section extractor.
+- `54b9703`: measured permission-section extractor; system Self-check 311/311 clean.
+- current push: A5/A6 source-module evidence.
