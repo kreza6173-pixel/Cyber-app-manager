@@ -25,7 +25,7 @@ No INTERNET permission. Commands only through Shizuku and ExecBridge. Validate a
 | A3 snapshots, undo, pins, batch | done | Phone-verified |
 | Debloat | done | CI green and phone acceptance |
 | A4 permissions + AppOps | done on reference phone | Self-check system 311/311 clean; user 463/463; HyperOS ask parsed read-only |
-| A5 to A8 | open | |
+| A5 to A8 | open | A5 parser foundation pushed; CI fix pending verification |
 | 1.0 release | open | |
 
 ## Acceptance record
@@ -39,22 +39,28 @@ No INTERNET permission. Commands only through Shizuku and ExecBridge. Validate a
 
 ## Current checkpoint
 
-A4 is closed on the reference phone. A5 has started with a read-only parser and probe foundation in commit `0615a610` (duplicate test path cleaned in `92b31b0`). It follows the proven `kreza6173-pixel/void-autostart` module:
+A4 is closed on the reference phone. A5 has a read-only parser and probe foundation in commit `0615a610`. The duplicate test path was removed in `92b31b0`, and the handoff history was restored in `2a3bd59`.
+
+A5 follows the proven `kreza6173-pixel/void-autostart` module:
 
 - Boot receiver discovery from `dumpsys package`, looking for `BOOT_COMPLETED`, `LOCKED_BOOT_COMPLETED`, `QUICKBOOT_POWERON` and `MY_PACKAGE_REPLACED`.
 - Background state uses `RUN_IN_BACKGROUND` and `RUN_ANY_IN_BACKGROUND` AppOps.
-- The new parser preserves raw output and reports unknown ROM shapes rather than guessing.
-- No A5 write control is exposed yet. Component and AppOps writes need a fresh read-back probe because this ROM previously returned exit 0 while silently keeping some changes.
+- The parser preserves raw output and reports unknown ROM shapes rather than guessing.
+- The first A5 CI runs (#72, #73 and #74) all failed at the same unit test, `AutostartAuditTest.findsBootReceiverAndBackgroundOps`, line 17.
+- Root cause: the parser accepted fully qualified receiver classes but rejected Android's common shorthand form `package/.Receiver` because the class pattern required a letter immediately after `/`.
+- Commit `fd067e8` fixes the pattern to accept shorthand classes and adds a fully qualified receiver test. No A5 write control is exposed yet.
 
-The old source commands are `pm disable <package>/<component>`, `pm enable <package>/<component>` and `cmd appops set`, but they are not yet trusted by VOID until verified on this phone.
+The old source commands are `pm disable <package>/<component>`, `pm enable <package>/<component>` and `cmd appops set`, but they are not trusted by VOID until a phone probe proves the read-back.
 
 ## Remaining work
 
-1. A5 read-only UI and phone probe, then guarded component/background writes where read-back proves them.
-2. A6 notification mute, notification-listener access and DND access, based on `void-pulse`.
-3. A7 Chain3 per-app network block and `netpolicy`, based on `VOID-WALL`.
-4. A8 streamed APK/APKS/XAPK installer based on `pulse-install`; APKM stays out of scope.
-5. 1.0 README, About, icon, fastlane, signed release, smoke test and merge to `main`.
+1. Confirm CI green for `fd067e8`.
+2. Add the read-only A5 UI and phone probe.
+3. Add guarded component/background writes only where read-back proves them.
+4. A6 notification mute, notification-listener access and DND access, based on `void-pulse`.
+5. A7 Chain3/netpolicy based on `VOID-WALL`.
+6. A8 streamed APK/APKS/XAPK installer based on `pulse-install`; APKM stays out of scope.
+7. 1.0 README, About, icon, fastlane, signed release, smoke test and merge to `main`.
 
 ## Safety decisions
 
@@ -72,3 +78,5 @@ AppOps is separate from runtime permissions. OEM operations are shown but never 
 - `077746ab`: A5/A6 source-module evidence.
 - `0615a610`: A5 parser and read-only repository foundation.
 - `92b31b0`: duplicate test path cleanup.
+- `2a3bd59`: handoff history restored.
+- `fd067e8`: A5 receiver shorthand parser fix and regression test.
