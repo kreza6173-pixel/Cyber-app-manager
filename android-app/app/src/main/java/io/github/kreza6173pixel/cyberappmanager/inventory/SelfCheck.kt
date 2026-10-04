@@ -22,7 +22,10 @@ data class SelfCheckReport(
     val complete: Boolean get() = checked == planned
 }
 
-/** Plain-text report for Copy/Share and GitHub issues. Kept in English so maintainers can read every report. */
+/**
+ * Plain-text report for Copy/Share and GitHub issues. Kept in English so maintainers can read every report.
+ * Packages with permission problems are listed first, so rare findings are not buried under AppOps lines.
+ */
 fun selfCheckText(r: SelfCheckReport, device: String): String = buildString {
     appendLine("VOID // APPS self-check")
     appendLine("device: $device")
@@ -36,7 +39,7 @@ fun selfCheckText(r: SelfCheckReport, device: String): String = buildString {
         appendLine("no problems found")
     } else {
         appendLine()
-        r.items.forEach { item ->
+        r.items.sortedBy { item -> if (item.issues.any { it.startsWith("permissions:") }) 0 else 1 }.forEach { item ->
             appendLine("${item.pkg} (${if (item.isSystem) "system" else "user"})")
             item.issues.forEach { appendLine("  - $it") }
         }

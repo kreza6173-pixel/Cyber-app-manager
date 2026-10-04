@@ -17,7 +17,12 @@ data class AppOpRecord(
     val scoped: Boolean = false,
 ) {
     val changeable: Boolean get() = !oem && mode in CHANGEABLE_MODES
-    companion object { val CHANGEABLE_MODES = listOf("allow", "ignore", "deny", "foreground", "default") }
+    companion object {
+        val CHANGEABLE_MODES = listOf("allow", "ignore", "deny", "foreground", "default")
+        /** Modes that are parsed and shown but never sent. `ask` is printed by HyperOS (seen as `MIUIOP(10017): ask`). */
+        val READ_ONLY_MODES = listOf("ask")
+        val KNOWN_MODES = CHANGEABLE_MODES + READ_ONLY_MODES
+    }
 }
 
 /** [scoped] is true only when uid and package scopes were separated reliably; changes require it. */
@@ -46,7 +51,7 @@ private fun opLineOf(raw: String): OpLine? {
     val op = match.groupValues[1].lowercase()
     val mode = match.groupValues[2].lowercase()
     val oem = OEM_APP_OP.matches(op)
-    return if (mode !in AppOpRecord.CHANGEABLE_MODES || (!oem && !isValidAppOp(op))) null
+    return if (mode !in AppOpRecord.KNOWN_MODES || (!oem && !isValidAppOp(op))) null
     else OpLine(op, mode, match.groupValues.getOrNull(3).orEmpty(), oem)
 }
 
