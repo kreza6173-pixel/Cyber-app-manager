@@ -30,4 +30,21 @@ class AutostartAuditTest {
         val audit = parseAutostartAudit("com.example.app", "com.other/.Receiver: BOOT_COMPLETED")
         assertTrue(audit.receivers.isEmpty())
     }
+
+    @Test fun ignoresBootTextFromActivityAndProviderSections() {
+        val text = """
+            Activity Resolver Table:
+              com.example.app/.MainActivity filter 1
+            Receiver Resolver Table:
+              com.example.app/.BootReceiver filter 2
+              Action: \"android.intent.action.BOOT_COMPLETED\"
+            Service Resolver Table:
+              com.example.app/androidx.startup.InitializationProvider filter 3
+              Action: \"android.intent.action.BOOT_COMPLETED\"
+            Registered ContentProviders:
+              com.example.app/androidx.startup.InitializationProvider
+        """.trimIndent()
+        val audit = parseAutostartAudit("com.example.app", text)
+        assertEquals(listOf("com.example.app/.BootReceiver"), audit.receivers.map { it.component })
+    }
 }
