@@ -17,7 +17,7 @@ The old WebUI and shell modules are historical references only. Root and Dhizuku
 
 ## 2. Engineering rules
 
-No INTERNET permission. Commands only through Shizuku UserService and ExecBridge. Package and permission names validated and quoted. Every write read back; APPLIED only when read-back matches. Protected packages refused in the repository, not only hidden in the UI. Snapshots hold package state only. Bulk work is sequential with per-package results. Code and the strings/resources it uses land in one commit. CI proves build and tests; the reference phone proves behaviour. Diagnose CI failures from the actual failing test name and line in the log, never from assumption. Shell output is capped at 64 KiB by ExecBridge: any new shell filter must be measured on the phone (`| wc -c` on a large app such as Drive) before it is relied on; an unmeasured extra read must be non-fatal. A write control is shown only where a phone test showed Android accepts it. Every commit message must match the files it contains.
+No INTERNET permission. Commands only through Shizuku UserService and ExecBridge. Package and permission names validated and quoted. Every write read back; APPLIED only when read-back matches. Protected packages refused in the repository, not only hidden in the UI. Snapshots hold package state only. Bulk work is sequential with per-package results. Code and the strings/resources it uses land in one commit. CI proves build and tests; the reference phone proves behaviour. Diagnose CI failures from the actual failing test name and line in the log, never from assumption. Shell output is capped at 64 KiB by ExecBridge: any new shell filter must be measured on the phone (`| wc -c`) before it is relied on; an unmeasured extra read must be non-fatal. A write control is shown only where a phone test showed Android accepts it. Every commit message must match the files it contains.
 
 ## 3. Status
 
@@ -28,7 +28,7 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 | A2 single-package operations | done | Suspend/Unsuspend user and system apps; protected apps show no actions. Suspend and Remove-for-user re-tested 2026-10-04 |
 | A3 snapshots, undo, pins, batch | done | phone-verified |
 | Debloat track | done | CI green and owner phone acceptance |
-| A4 permissions + AppOps | **done on the reference phone; Self-check pending** | Permissions, shared uid, AppOps audit, scope split and guarded package-scope change phone-verified. Self-check (`ba860ea`) awaiting CI and a phone run |
+| A4 permissions + AppOps | **Self-check fix in progress** | AppOps and permission writes phone-verified; Self-check found HyperOS `MIUIOP(10017): ask` (supported in `d8f885a`) and two permission dumps over the 64 KiB cap (measured in `dumpsys`: android 108563 bytes, GMS 83925 bytes) |
 | A5 to A8 | open | |
 | 1.0 release | open | |
 
@@ -43,28 +43,20 @@ No INTERNET permission. Commands only through Shizuku UserService and ExecBridge
 - Shared uid (`0d4cd24`): securitycenter shows `Shared system uid android.uid.system (1000)`, dangerous permissions as `granted · runtime · fixed`, no Grant/Revoke. Shared users block 37361 bytes.
 - AppOps change, package scope: Acode `run_any_in_background` and `read_clipboard` allow to ignore APPLIED; Drive `wake_lock` allow to ignore and back APPLIED.
 - `873a114` check: on Acode, `accept_handover` and `camera` show no Change button; package ops without a uid mode still change both ways.
+- Self-check system group: 311/311 checked; only `android` and `com.google.android.gms` hit the permission output cap. Self-check user group: 463/463 checked; 1 package had no permission state and 449 packages printed HyperOS `MIUIOP(10017): ask` until `d8f885a` made that mode read-only.
 
 ## 5. Current checkpoint and remaining path
 
-AppOps change findings (phone):
+Permission dump fix (`d8f885a` follow-up):
 
-- Package scope works for ops that have no uid mode.
-- Package scope for an op with a uid mode was silently kept (Acode and Drive `ACCEPT_HANDOVER`). AOSP evaluates the uid mode first, so a stuck package `allow` has no effect while the uid mode is `ignore`. Nothing was shown wrongly: every APPLIED was real and every NOT_APPLIED really changed nothing.
-- Uid scope: `appops set 14411 CAMERA allow` and `CALL_PHONE allow` returned exit 0 and kept `ignore`. Uid modes of permission-backed ops follow the runtime permission state; they are changed with Grant/Revoke.
-- System uid: securitycenter (uid 1000) `BLUETOOTH_CONNECT` package ignore and `CAPTURE_CONSENTLESS_BUGREPORT_ON_USERDEBUG_BUILD` were silently kept (exit 0). Its runtime permissions are `fixed` on the shared system uid. Another app manager on the same phone also cannot revoke them. Since `ba860ea` VOID refuses AppOps changes for uid < 10000 up front.
-
-Self-check (`ba860ea`, Home > Self-check):
-
-- Read-only. Runs the permission audit (parse only) and the AppOps audit for each package in the chosen group (User, System, All), one at a time.
-- Reports: permission read errors and 64 KiB cap hits, packages with no permission state, AppOps errors, unsplit uid/package output, AppOps lines VOID does not recognise.
-- Stop keeps the partial report; leaving the screen stops the run. Copy and Share include a device/ROM line.
-- ROM note: vendor system apps (MIUI/HyperOS Security, Samsung One UI apps, other OEM apps) can behave differently per ROM. Users are asked to open an issue with the report using `.github/ISSUE_TEMPLATE/device_rom_report.md`.
-- Empty uid block now means every AppOps line is package scope, so apps with no uid modes are not reported as unsplit.
+- Phone measurements showed the active Packages block itself was too large: `android` 108563 bytes and `com.google.android.gms` 83925 bytes.
+- The large sections are declared permissions, requested permissions, install permissions, overlay paths, libraries and component lists. The audit only needs requested/install/runtime permission state plus the shared-user marker.
+- The new extractor keeps only those sections before ExecBridge, rather than adding an unmeasured byte cutoff. It preserves the shared-user second read.
 
 Next:
 
-1. CI green for `ba860ea`, then owner runs Self-check on User, then System, and sends the report.
-2. Fix what the report finds, then close A4.
+1. CI green for this extractor, then rerun Self-check on System and confirm `android` / GMS are no longer cap errors.
+2. Rerun User only if you want to confirm the `ask` count is zero; then close A4.
 3. A5: boot receivers, component control, background AppOps.
 
 ## 6. Design and safety decisions
@@ -74,7 +66,7 @@ Next:
 - AppOps scopes: `appops get <uid>` is the uid scope; the rest of `appops get <package>` after that exact prefix is the package scope. If the prefix does not match line by line, the merged view is shown and changes are disabled.
 - AppOps changes: package scope only, one op at a time, confirmation, read-back. Not offered while a non-default uid mode is set. Uid scope disabled. Refused for system uids (< 10000).
 - OEM AppOps (`MIUIOP(n)`) are shown but never changeable.
-- Permission audit reads only the active `Packages:` block; shared-uid packages also read `Shared users:`. Grant/Revoke is refused for shared system uids.
+- Permission audit reads only the relevant permission sections. Shared-uid packages also read `Shared users:`. Grant/Revoke is refused for shared system uids.
 - Self-check never writes. ROM-specific results are expected; per-ROM support is added only from issue reports with phone evidence.
 - Owner decision (2026-10-04): `com.miui.securitycenter` stays unprotected.
 - Protected packages remain read-only. No change is reported APPLIED without read-back.
@@ -91,18 +83,21 @@ Next:
 - Shared-uid permissions showed `unknown`; fixed in `0d4cd24`.
 - OEM ops dropped; now read-only records. Duplicate op lines now split by scope.
 - AppOps change offered where Android silently ignores it; restricted in `090c376`, `873a114` and `ba860ea` (system uid).
-- `ba860ea` commit message mentions docs but did not include them; this docs commit completes it.
+- `ba860ea` commit message mentions docs but did not include them; docs follow-up completed it.
+- Self-check found HyperOS `ask` mode; supported as read-only in `d8f885a`.
+- Self-check measured two permission dumps over the cap; this commit replaces the broad block read with a section extractor.
 - Android may stop the target process during permission changes; UI warns.
 - Some OEM system packages cannot be removed under Shizuku shell; reported unsupported.
 
 ## 8. Remaining work, in order
 
-1. Self-check phone run (User, then System) and fixes from its report.
-2. A5 boot receivers, component control, background AppOps.
-3. A6 notification listener, DND access, per-app notification mute.
-4. A7 Chain3 per-app network block and netpolicy background data.
-5. A8 installer for APK, APKS and XAPK. APKM stays out of scope.
-6. 1.0: README, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
+1. CI green for the permission extractor, then system Self-check rerun.
+2. Close A4 after the rerun.
+3. A5 boot receivers, component control, background AppOps.
+4. A6 notification listener, DND access, per-app notification mute.
+5. A7 Chain3 per-app network block and netpolicy background data.
+6. A8 installer for APK, APKS and XAPK. APKM stays out of scope.
+7. 1.0: README, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
 
 ## 9. Commit trail
 
@@ -119,4 +114,5 @@ Next:
 - `090c376`: package scope blocked while a uid mode is set.
 - `873a114`: uid scope disabled, Change shown only where it works (phone-verified).
 - `ba860ea`: Self-check, ROM report template, system-uid AppOps refusal.
-- current push: docs.
+- `d8f885a`: HyperOS `ask` AppOps mode shown read-only.
+- current push: measured permission-section extractor.

@@ -7,15 +7,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PermissionDumpTest {
-    @Test fun commandKeepsOnlyThePackagesBlock() {
+    @Test fun commandExtractsOnlyPermissionSectionsBeforeTheCap() {
         val cmd = permissionDumpCommand("'com.example.app'")
-        assertEquals("dumpsys package 'com.example.app' | sed -n '/^Packages:/,/^[A-Z]/p'", cmd)
+        assertTrue(cmd.contains("dumpsys package 'com.example.app' | awk"))
+        assertTrue(cmd.contains("requested permissions"))
+        assertTrue(cmd.contains("install permissions"))
+        assertTrue(cmd.contains("runtime permissions"))
         assertFalse(cmd.contains("grep"))
         assertEquals("dumpsys package 'com.example.app' | sed -n '/^Shared users:/,/^[A-Z]/p'", sharedUsersDumpCommand("'com.example.app'"))
     }
 
-    /** Shape of the block sed returns: active package, then the next top-level header line. */
-    @Test fun parsesThePackagesBlockAsReturnedBySed() {
+    /** Shape of the sections retained by the awk extractor. */
+    @Test fun parsesThePermissionSectionsAsReturnedByExtractor() {
         val block = """
             Packages:
               Package [com.example.app] (abc123):
@@ -28,7 +31,6 @@ class PermissionDumpTest {
                   gids=[3003]
                   runtime permissions:
                     android.permission.CAMERA: granted=false, flags=[ USER_SET ]
-            Hidden system packages:
         """.trimIndent()
         val audit = parsePermissionAudit("com.example.app", block)
         assertEquals(listOf("android.permission.CAMERA", "android.permission.INTERNET"), audit.permissions.map { it.name })
