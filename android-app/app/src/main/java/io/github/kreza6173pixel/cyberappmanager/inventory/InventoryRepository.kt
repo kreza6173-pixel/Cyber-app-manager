@@ -12,7 +12,7 @@ import java.util.UUID
 sealed interface InventoryResult { data class Ok(val entries: List<AppEntry>, val counts: InventoryCounts) : InventoryResult; data class Error(val message: String) : InventoryResult }
 sealed interface DetailsResult { data class Ok(val details: PackageDetails, val raw: String) : DetailsResult; data class Error(val message: String) : DetailsResult }
 sealed interface PermissionAuditResult { data class Ok(val audit: PermissionAudit, val sharedUser: SharedUserInfo? = null) : PermissionAuditResult; data class Error(val message: String) : PermissionAuditResult }
-sealed interface AppOpsAuditResult { data class Ok(val audit: AppOpsAudit, val raw: String, val uid: Int? = null) : AppOpsAuditResult; data class Error(val message: String) : AppOpsAuditResult }
+sealed interface AppOpsAuditResult { data class Ok(val audit: AppOpsAudit, val raw: String, val uid: Int? = null, val packageText: String = "") : AppOpsAuditResult; data class Error(val message: String) : AppOpsAuditResult }
 data class ActionResult(val action: AppAction, val verdict: Verdict, val command: String, val output: String, val readBack: String, val snapshotId: String? = null)
 data class PermissionChangeResult(val pkg: String, val permission: String, val grant: Boolean, val verdict: Verdict, val command: String, val output: String, val before: Boolean?, val after: Boolean?)
 data class AppOpChangeResult(val pkg: String, val op: String, val scope: AppOpScope, val mode: String, val verdict: Verdict, val command: String, val output: String, val before: String?, val after: String?)
@@ -51,9 +51,10 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
     /**
      * Reads the active Packages: block (fits the 64 KiB cap). For shared-uid packages the Shared users: block,
      * which holds their runtime permissions, is read in a second call; if that call fails the Packages-only
-     * result is kept. pm check-permission is the authority for runtime state.
+     * result is kept. When [authoritative], pm check-permission is the authority for runtime state; Self-check
+     * passes false because it only checks that the output can be read and parsed.
      */
-    suspend fun permissionAudit(pkg: String): PermissionAuditResult = withContext(Dispatchers.IO) {
+    suspend fun permissionAudit(pkg: String, authoritative: Boolean = true): PermissionAuditResult = withContext(Dispatchers.IO) {
         if (!isValidPackageName(pkg)) return@withContext PermissionAuditResult.Error("invalid package name: $pkg")
         val q = ShellQuoting.quote(pkg)
         val raw = when (val r = shell(permissionDumpCommand(q), false)) { is ShellResult.Ok -> r.stdout; is ShellResult.Bad -> return@withContext PermissionAuditResult.Error(r.message) }
@@ -61,7 +62,7 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         val sharedRaw = if (shared != null) (shell(sharedUsersDumpCommand(q), false) as? ShellResult.Ok)?.stdout else null
         val parsed = parsePermissionAudit(pkg, if (sharedRaw != null) raw + "\n\n" + sharedRaw else raw)
         val runtime = parsed.permissions.filter { it.runtime }
-        if (runtime.isEmpty()) return@withContext PermissionAuditResult.Ok(parsed, shared)
+        if (runtime.isEmpty() || !authoritative) return@withContext PermissionAuditResult.Ok(parsed, shared)
         val checks = runtime.joinToString("; ") { p -> "printf '%s\\n' ${ShellQuoting.quote(p.name)}; pm check-permission $q ${ShellQuoting.quote(p.name)} 0" }
         val lines = when (val r = shell(checks, true)) { is ShellResult.Ok -> r.stdout.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList(); is ShellResult.Bad -> emptyList() }
         val checked = buildMap<String, Boolean?> {
@@ -89,13 +90,13 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
             append("$ appops get ").append(pkg).append('\n').append(full.trim())
             if (uid != null && uidText != null) append("\n\n$ appops get ").append(uid).append(" (uid)\n").append(uidText.trim())
         }
-        AppOpsAuditResult.Ok(audit, raw, uid)
+        AppOpsAuditResult.Ok(audit, raw, uid, full)
     }
 
     /**
      * Guarded AppOps change for one op in package scope, then read back with a fresh scoped audit.
-     * Uid scope is refused: on the reference ROM every `appops set <uid>` returned exit 0 and kept the mode.
-     * An op missing from a scope counts as default. APPLIED only when the read-back matches.
+     * Refused: uid scope and apps on a system uid (< 10000), because the reference ROM returned success and
+     * kept the mode in both cases. An op missing from a scope counts as default. APPLIED only on a matching read-back.
      */
     suspend fun setAppOp(pkg: String, op: String, scope: AppOpScope, mode: String): AppOpChangeResult = withContext(Dispatchers.IO) {
         fun refused(reason: String, before: String? = null) = AppOpChangeResult(pkg, op, scope, mode, Verdict.REFUSED, "", reason, before, before)
@@ -105,6 +106,7 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         e.protectedReason?.let { return@withContext refused("protected: $it") }
         val beforeResult = appOpsAudit(pkg) as? AppOpsAuditResult.Ok ?: return@withContext refused("AppOps state unavailable")
         val uid = beforeResult.uid ?: return@withContext refused("uid unavailable")
+        if (uid < 10000) return@withContext refused("system uid $uid: this ROM silently kept package changes for system-uid apps (securitycenter BLUETOOTH_CONNECT)")
         if (!beforeResult.audit.scoped) return@withContext refused("uid and package scope could not be separated on this ROM")
         val before = appOpModeIn(beforeResult.audit, op, scope)
         beforeResult.audit.operations.firstOrNull { it.op == op }?.let(::packageScopeBlockedBy)?.let { uidMode ->
@@ -117,6 +119,38 @@ class InventoryRepository(private val context: Context, private val bridge: Exec
         val after = afterAudit?.let { appOpModeIn(it, op, scope) }
         val verdict = when { afterAudit == null || !afterAudit.scoped -> Verdict.UNVERIFIABLE; (after ?: "default") == mode -> Verdict.APPLIED; else -> Verdict.NOT_APPLIED }
         AppOpChangeResult(pkg, op, scope, mode, verdict, cmd, output, before, after)
+    }
+
+    /**
+     * Read-only Self-check: permission audit (parse only) and AppOps audit for every package in [scope],
+     * one at a time. Nothing is changed. [shouldStop] ends the run early and keeps the partial report.
+     */
+    suspend fun selfCheck(scope: SelfCheckScope, shouldStop: () -> Boolean, onProgress: (Int, Int) -> Unit): SelfCheckReport = withContext(Dispatchers.IO) {
+        val targets = currentEntries().orEmpty().filter { e -> e.state != AppState.REMOVED && when (scope) { SelfCheckScope.USER -> !e.isSystem; SelfCheckScope.SYSTEM -> e.isSystem; SelfCheckScope.ALL -> true } }.sortedBy { it.pkg }
+        var permissionErrors = 0; var sizeCapHits = 0; var missingState = 0; var opsErrors = 0; var unsplit = 0; var unrecognised = 0; var checked = 0
+        val items = ArrayList<SelfCheckItem>()
+        withContext(Dispatchers.Main) { onProgress(0, targets.size) }
+        for (e in targets) {
+            if (shouldStop()) break
+            val issues = ArrayList<String>()
+            when (val p = permissionAudit(e.pkg, authoritative = false)) {
+                is PermissionAuditResult.Ok -> if (p.audit.permissions.isNotEmpty() && p.audit.permissions.none { it.granted != null }) { missingState++; issues += "permissions: ${p.audit.permissions.size} listed, none with a granted state" }
+                is PermissionAuditResult.Error -> { permissionErrors++; if (p.message.contains("truncated")) sizeCapHits++; issues += "permissions: " + p.message.lineSequence().first() }
+            }
+            when (val o = appOpsAudit(e.pkg)) {
+                is AppOpsAuditResult.Ok -> {
+                    if (!o.audit.scoped && o.audit.operations.isNotEmpty()) { unsplit++; issues += "appops: uid and package scope not split" }
+                    val odd = unparsedAppOpLines(o.packageText)
+                    if (odd.isNotEmpty()) { unrecognised++; issues += "appops: ${odd.size} unrecognised line(s): " + odd.take(3).joinToString(" | ") }
+                }
+                is AppOpsAuditResult.Error -> { opsErrors++; if (o.message.contains("truncated")) sizeCapHits++; issues += "appops: " + o.message.lineSequence().first() }
+            }
+            if (issues.isNotEmpty()) items += SelfCheckItem(e.pkg, e.isSystem, issues)
+            checked++
+            val done = checked
+            withContext(Dispatchers.Main) { onProgress(done, targets.size) }
+        }
+        SelfCheckReport(scope, targets.size, checked, permissionErrors, sizeCapHits, missingState, opsErrors, unsplit, unrecognised, items)
     }
 
     suspend fun setPermission(pkg: String, permission: String, grant: Boolean): PermissionChangeResult = withContext(Dispatchers.IO) {

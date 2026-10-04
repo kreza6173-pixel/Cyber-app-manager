@@ -41,15 +41,21 @@ private val PACKAGE_UID = Regex("^package:(\\S+)\\s+uid:(\\d+)")
 
 private data class OpLine(val op: String, val mode: String, val detail: String, val oem: Boolean)
 
-/** Every usable operation line, in the order Android printed them. */
-private fun opLines(text: String): List<OpLine> = text.lineSequence().mapNotNull { raw ->
-    val match = APP_OP_LINE.find(raw.trim()) ?: return@mapNotNull null
+private fun opLineOf(raw: String): OpLine? {
+    val match = APP_OP_LINE.find(raw.trim()) ?: return null
     val op = match.groupValues[1].lowercase()
     val mode = match.groupValues[2].lowercase()
     val oem = OEM_APP_OP.matches(op)
-    if (mode !in AppOpRecord.CHANGEABLE_MODES || (!oem && !isValidAppOp(op))) null
+    return if (mode !in AppOpRecord.CHANGEABLE_MODES || (!oem && !isValidAppOp(op))) null
     else OpLine(op, mode, match.groupValues.getOrNull(3).orEmpty(), oem)
-}.toList()
+}
+
+/** Every usable operation line, in the order Android printed them. */
+private fun opLines(text: String): List<OpLine> = text.lineSequence().mapNotNull(::opLineOf).toList()
+
+/** Non-empty lines of `appops get` output that VOID did not understand. Self-check reports them so new ROM formats are found. */
+fun unparsedAppOpLines(text: String): List<String> =
+    text.lineSequence().map { it.trim() }.filter { it.isNotEmpty() && it != "No operations." && opLineOf(it) == null }.toList()
 
 /** Merged view of `appops get <package>`: one record per op, other reported modes kept in [AppOpRecord.alsoReported]. */
 fun parseAppOps(packageName: String, text: String): AppOpsAudit {
@@ -65,13 +71,15 @@ fun parseAppOps(packageName: String, text: String): AppOpsAudit {
 /**
  * Scoped view. On the reference ROM `appops get <uid>` prints only the uid block, and `appops get <package>`
  * prints that same block first, then the package block. The leading lines of [packageText] that match
- * [uidText] line by line are uid scope; the rest is package scope. If the prefix does not match exactly,
- * the merged [parseAppOps] view is returned instead of guessing.
+ * [uidText] line by line are uid scope; the rest is package scope. An empty uid block means every line is
+ * package scope, unless the package output still shows a `Uid mode:` line. If the prefix does not match
+ * exactly, the merged [parseAppOps] view is returned instead of guessing.
  */
 fun parseAppOpsScoped(packageName: String, packageText: String, uidText: String): AppOpsAudit {
     val all = opLines(packageText)
     val uid = opLines(uidText)
-    val prefixMatches = uid.isNotEmpty() && uid.size <= all.size && uid.indices.all { all[it].op == uid[it].op && all[it].mode == uid[it].mode }
+    if (uid.isEmpty() && packageText.lineSequence().any { it.trim().startsWith("Uid mode:") }) return parseAppOps(packageName, packageText)
+    val prefixMatches = uid.size <= all.size && uid.indices.all { all[it].op == uid[it].op && all[it].mode == uid[it].mode }
     if (!prefixMatches) return parseAppOps(packageName, packageText)
     val uidByOp = uid.associateBy { it.op }
     val pkgByOp = all.drop(uid.size).associateBy { it.op }
