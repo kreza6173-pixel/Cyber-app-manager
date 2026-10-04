@@ -20,6 +20,12 @@ class AutostartAuditTest {
         assertTrue(audit.raw.isNotEmpty())
     }
 
+    @Test fun acceptsFullyQualifiedReceiverClass() {
+        val audit = parseAutostartAudit("com.example.app", "com.example.app/com.example.app.BootReceiver: LOCKED_BOOT_COMPLETED")
+        assertEquals(1, audit.receivers.size)
+        assertEquals("LOCKED_BOOT_COMPLETED", audit.receivers.single().action)
+    }
+
     @Test fun ignoresReceiverFromAnotherPackage() {
         val audit = parseAutostartAudit("com.example.app", "com.other/.Receiver: BOOT_COMPLETED")
         assertTrue(audit.receivers.isEmpty())

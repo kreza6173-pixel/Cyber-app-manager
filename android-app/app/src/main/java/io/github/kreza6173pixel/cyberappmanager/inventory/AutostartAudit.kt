@@ -7,7 +7,8 @@ data class BackgroundOpState(val op: String, val mode: String)
 
 data class AutostartAudit(val packageName: String, val receivers: List<BootReceiver>, val backgroundOps: List<BackgroundOpState>, val raw: String = "")
 
-private val COMPONENT = Regex("^([A-Za-z][A-Za-z0-9_.]*\\/[A-Za-z][A-Za-z0-9_.$]*):?$")
+/* dumpsys commonly prints shorthand classes as `pkg/.BootReceiver`. */
+private val COMPONENT = Regex("^([A-Za-z][A-Za-z0-9_.]*\\/[A-Za-z.][A-Za-z0-9_.$]*):?$")
 private val BOOT = Regex("(BOOT_COMPLETED|LOCKED_BOOT_COMPLETED|QUICKBOOT_POWERON|MY_PACKAGE_REPLACED)")
 private val OP = Regex("(?:RUN_IN_BACKGROUND|RUN_ANY_IN_BACKGROUND):\\s*([a-z]+)", RegexOption.IGNORE_CASE)
 
