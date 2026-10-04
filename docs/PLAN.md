@@ -19,8 +19,8 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 1. Permission audit, runtime read-back, Grant/Revoke. **Done, phone-verified (Drive, Meet, Play Store, Acode).**
 2. Shared-uid permissions with system-uid write refusal. **Done, phone-verified (securitycenter).**
 3. AppOps audit, OEM ops, uid/package scope split. **Done, phone-verified (Drive, securitycenter, Acode).**
-4. AppOps change. **Package scope works for ops without a uid mode (phone-verified on Acode). Uid scope disabled: this ROM silently kept every uid change. Latest push hides Change where it cannot work; awaiting CI and a short phone check.**
-5. Read-only Self-check over all packages. **Next.**
+4. AppOps change. **Done: package scope only, hidden where a uid mode overrides it, uid scope disabled, system uids refused. Phone-verified (`873a114`).**
+5. Read-only Self-check over all packages with ROM note and issue template. **Pushed (`ba860ea`); awaiting CI and a phone run.**
 
 ## Then
 
@@ -32,4 +32,4 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 
 ## Gates
 
-No INTERNET permission. No protected bypass. No destructive batch without preview and snapshot. No support claim without a device probe. No release claim while CI or device acceptance is red. Code and its strings/resources always land in one commit. Shell filters are measured on the phone before they are relied on. A write control is shown only where a phone test showed Android accepts it.
+No INTERNET permission. No protected bypass. No destructive batch without preview and snapshot. No support claim without a device probe. No release claim while CI or device acceptance is red. Code and its strings/resources always land in one commit. Shell filters are measured on the phone before they are relied on. A write control is shown only where a phone test showed Android accepts it. ROM-specific support comes from issue reports with phone evidence.
