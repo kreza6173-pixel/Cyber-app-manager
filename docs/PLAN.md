@@ -24,10 +24,15 @@ A safe, reversible, local Android package manager built with Kotlin, Compose, an
 
 ## Then
 
-- A5 boot receivers, component control, background AppOps.
-- A6 notification listener, DND access, per-app notification mute.
-- A7 Chain3 per-app network block and netpolicy background data.
-- A8 session install for APK, APKS and XAPK, OBB placement, extraction, cache trimming, safe shared-storage cleanup. APKM is out of scope.
+A5 to A8 start from the owner's own Shevery modules, which already worked on the reference phone. Their shell commands are the starting point; VOID adds validation, protected-package refusal, read-back and snapshots, and each command is still confirmed by a phone probe before a control is shown. Root-only parts of those modules (iptables, LAN, recipes) and APKM stay out of scope.
+
+| Step | Source module | Commands to port |
+|---|---|---|
+| A5 boot receivers, component control, background AppOps | `kreza6173-pixel/void-autostart` | read from the module before starting |
+| A6 notification listener, DND access, per-app notification mute | `kreza6173-pixel/void-pulse` | read from the module before starting |
+| A7 per-app network block, background data | `kreza6173-pixel/VOID-WALL` (`webui/wall.js`) | Chain 3 via `cmd connectivity` (Android 11+), background data via `netpolicy` |
+| A8 installer for APK, APKS, XAPK, OBB, extract | `kreza6173-pixel/pulse-install` (`webui/script.js`, `service.sh`) | streamed `pm install-create` / `install-write -S <size> -` / `install-commit` (avoids the FUSE read error of path installs), `unzip`, XAPK `manifest.json`, OBB copy, `pm path` extract |
+
 - 1.0: README rewrite, About, icon, fastlane, release notes, signed release, final smoke test, merge to `main`.
 
 ## Gates
