@@ -7,27 +7,44 @@ data class BackgroundOpState(val op: String, val mode: String)
 
 data class AutostartAudit(val packageName: String, val receivers: List<BootReceiver>, val backgroundOps: List<BackgroundOpState>, val raw: String = "")
 
-/*
- * Component at line start, e.g. `pkg/.BootReceiver:`, `pkg/pkg.BootReceiver: ACTION`
- * or dumpsys style `a1b2c3 pkg/.BootReceiver filter 99`. Ends on ':', whitespace or EOL.
- */
+/* Component at line start, including dumpsys' optional hex prefix. */
 private val COMPONENT = Regex("^(?:[0-9a-f]+\\s+)?([A-Za-z][A-Za-z0-9_.]*/[A-Za-z.][A-Za-z0-9_.$]*)(?=$|[:\\s])")
 private val BOOT = Regex("(LOCKED_BOOT_COMPLETED|BOOT_COMPLETED|QUICKBOOT_POWERON|MY_PACKAGE_REPLACED)")
 private val OP = Regex("(?:RUN_IN_BACKGROUND|RUN_ANY_IN_BACKGROUND):\\s*([a-z]+)", RegexOption.IGNORE_CASE)
 
-/** Best-effort parser based on the proven void-autostart dump strategy. Unknown ROM shapes stay in raw output. */
+/** Best-effort parser. Only Receiver Resolver Table entries can become boot receivers. */
 fun parseAutostartAudit(packageName: String, text: String): AutostartAudit {
     val receivers = linkedSetOf<BootReceiver>()
+    var inReceiverTable = true
     var component: String? = null
     var action: String? = null
     for (line in text.lineSequence()) {
         val trimmed = line.trim()
-        COMPONENT.find(trimmed)?.let { component = it.groupValues[1] }
+        when {
+            trimmed == "Receiver Resolver Table:" -> inReceiverTable = true
+            trimmed.endsWith(" Resolver Table:") && trimmed != "Receiver Resolver Table:" -> {
+                inReceiverTable = false
+                component = null
+                action = null
+            }
+            trimmed in setOf("Permissions:", "Registered ContentProviders:", "Packages:", "Queries:", "Dexopt state:", "Compiler stats:") -> {
+                inReceiverTable = false
+                component = null
+                action = null
+            }
+        }
+        if (!inReceiverTable) continue
+        COMPONENT.find(trimmed)?.let {
+            /* A new component starts a new filter; never carry an action across it. */
+            component = it.groupValues[1]
+            action = null
+        }
         BOOT.find(trimmed)?.let { action = it.groupValues[1] }
         if (component != null && action != null) {
             val c = component!!
             if (c.substringBefore('/') == packageName) receivers += BootReceiver(packageName, c, action!!)
-            component = null; action = null
+            component = null
+            action = null
         }
     }
     val ops = OP.findAll(text).map { BackgroundOpState(it.groupValues[0].substringBefore(':').uppercase(), it.groupValues[1].lowercase()) }.distinctBy { it.op }.toList()
